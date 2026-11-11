@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+from typing import Protocol
 from pathlib import Path
 
 import pandas as pd
@@ -17,6 +19,15 @@ _COLUMN_ALIASES = {
 }
 
 
+logger = logging.getLogger(__name__)
+
+
+class MarketDataSource(Protocol):
+    def load(self, request: DataLoadRequest) -> MarketData:
+        """读取行情并保留来源口径。"""
+        ...
+
+
 class CsvMarketDataSource:
     """CSV 行情适配器，只负责读取和封装来源元信息。"""
 
@@ -27,8 +38,15 @@ class CsvMarketDataSource:
         if path.stat().st_size == 0:
             raise ValueError(f"行情文件为空: {path}")
 
-        frame = pd.read_csv(path)
+        try:
+            frame = pd.read_csv(path, dtype="string")
+        except pd.errors.EmptyDataError as exc:
+            raise ValueError(f"行情文件没有表头: {path}") from exc
         frame.columns = [self._normalise_column(str(column)) for column in frame.columns]
+        if frame.columns.duplicated().any():
+            raise ValueError("字段映射后出现重复列名")
+        if frame.empty:
+            raise ValueError("行情文件没有数据行")
         missing = [column for column in REQUIRED_COLUMNS if column not in frame.columns]
         if missing:
             raise ValueError(f"CSV 缺少必需字段: {', '.join(missing)}")
@@ -42,6 +60,7 @@ class CsvMarketDataSource:
             is_synthetic=request.is_synthetic,
             extra={"file_sha256": self._sha256(path)},
         )
+        logger.info("读取CSV完成 file=%s rows=%d synthetic=%s", path.name, len(frame), request.is_synthetic)
         return MarketData(frame=frame, metadata=metadata)
 
     @staticmethod

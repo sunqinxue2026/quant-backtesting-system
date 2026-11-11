@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from quant_system.data import CsvMarketDataSource, DataLoadRequest
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(description="第二阶段：读取和清洗 CSV 行情")
     parser.add_argument("csv", nargs="?", default="data/test/synthetic_cleaning_demo.csv")
     parser.add_argument("--source", default="synthetic/test")
@@ -23,10 +25,15 @@ def main() -> None:
     parser.add_argument("--output", default="reports/cleaning_demo")
     args = parser.parse_args()
 
-    request = DataLoadRequest(Path(args.csv), args.source, args.data_as_of, args.adjustment_type, {"price": "CNY", "volume": "股", "amount": "CNY"}, args.source == "synthetic/test")
+    csv_path = Path(args.csv)
+    if not csv_path.is_absolute():
+        csv_path = PROJECT_ROOT / csv_path
+    request = DataLoadRequest(csv_path, args.source, args.data_as_of, args.adjustment_type, {"price": "CNY", "volume": "股", "amount": "CNY"}, args.source == "synthetic/test")
     market_data = CsvMarketDataSource().load(request)
     result = MarketDataCleaner().clean(market_data)
     output = Path(args.output)
+    if not output.is_absolute():
+        output = PROJECT_ROOT / output
     output.mkdir(parents=True, exist_ok=True)
     result.accepted.to_csv(output / "cleaned.csv", index=False)
     result.review.to_csv(output / "review.csv", index=False)

@@ -9,8 +9,8 @@
 - 需求基线：`需求书.md`。项目按用户要求以 Python 3.10 为主要兼容版本设计。
 - 第一阶段报告：`docs/阶段1_总体设计与验收.md`。
 - 第二阶段报告：`docs/阶段2_CSV读取与数据清洗验收.md`。
-- 第二阶段测试：5 passed；清洗演示已生成 cleaned、review、rejected 和 quality_report 文件。
-- 本阶段实际使用 Python 3.12.14 验证；Python 3.10 兼容性复验仍待进行。
+- 第二阶段测试：25项全部通过；清洗演示已生成 cleaned、review、rejected 和 quality_report 文件。
+- 本阶段已建立独立 .venv，使用 Python 3.10.11、Pandas 2.3.3、NumPy 2.2.6、pytest 9.2.0 验证通过。
 - 检测到 MySQL 8 服务 Running，尚未验证登录、建表或事务；数据库属于第三阶段。
 
 ## 与旧版本的关系
@@ -36,10 +36,14 @@
 ```powershell
 $env:PYTHONPATH=""
 $env:PYTHONNOUSERSITE="1"
-python -m pytest tests\data tests\cleaning -q
-python main.py --output reports\cleaning_demo
+.\.venv\Scripts\python.exe -m pytest tests\data tests\cleaning -q
+.\.venv\Scripts\python.exe main.py --output reports\cleaning_demo
 ```
 
-当前第二阶段测试结果：`5 passed`。入口会读取 `data/test/synthetic_cleaning_demo.csv`，输出清洗结果和质量报告。测试数据只用于验证流程，不代表真实市场收益。
+当前第二阶段测试结果：`25项全部通过`。入口会读取 `data/test/synthetic_cleaning_demo.csv`，输出清洗结果和质量报告。测试数据只用于验证流程，不代表真实市场收益。
 
 数据库、指标、策略、回测和图表命令将在对应阶段实现且实际验证后补充。
+
+## 第二阶段整改验收
+
+拒绝输出保留原始字段、来源记录号和原因；统计与明细一致。股票代码只接受六位代码加SH/SZ后缀，规范大小写和空格，不猜测裸代码市场。repaired统计代码格式实际修复行数，普通日期和数值类型转换不计入。完整11项验收见第二阶段报告；未进入第三阶段。

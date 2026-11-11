@@ -1,169 +1,91 @@
-# 第二阶段：工程骨架、CSV 读取与数据清洗验收
+# 第二阶段：CSV读取与数据清洗验收
 
-日期：2026-11-12。状态：本阶段完成，等待用户确认后进入第三阶段。
+日期：2026-11-12。状态：第二阶段整改与验证完成，等待用户验收；未进入第三阶段。
 
 ## 1. 本阶段目标
 
-建立 Python 3.10+ 可运行工程骨架，实现 CSV 行情数据读取、来源元信息封装、字段和类型标准化、重复与冲突记录识别、OHLC/成交数据质量检查、清洗质量报告和对应 pytest 测试。
-
-本阶段没有实现数据库、SQLAlchemy、技术指标、策略、回测、绩效或图表功能。
+建立独立Python 3.10环境，实现工程骨架、CSV读取、来源元数据、字段标准化、数据质量分类和测试。不实现数据库、指标、策略或回测。
 
 ## 2. 新增或修改的文件
 
-- `pyproject.toml`：Python 3.10 至 3.11 兼容范围、src 包发现、pytest 配置。
-- `requirements.txt`：Pandas、NumPy、pytest 依赖范围。
-- `main.py`：第二阶段清洗演示入口，自动引导 `src` 路径。
-- `src/quant_system/__init__.py`：包版本。
-- `src/quant_system/data/__init__.py`、`models.py`、`loader.py`：数据请求、元数据、行情对象和 CSV 适配器。
-- `src/quant_system/cleaning/__init__.py`、`models.py`、`cleaner.py`：质量报告和清洗流程。
-- `data/test/synthetic_cleaning_demo.csv`：明确标记为 synthetic/test 的清洗样例。
-- `tests/data/__init__.py`、`tests/data/test_loader.py`：CSV 读取测试。
-- `tests/cleaning/__init__.py`、`tests/cleaning/test_cleaner.py`：清洗、重复、冲突和 OHLC 测试。
-- `docs/阶段2_CSV读取与数据清洗验收.md`：本阶段 11 项验收记录。
-- `README.md`：更新重写版当前阶段和运行命令。
+本阶段已有：pyproject.toml、requirements.txt、main.py、src/quant_system包及data/cleaning模块、data/test/synthetic_cleaning_demo.csv、tests/data和tests/cleaning、README.md及本报告。
 
-未纳入本阶段提交：已有的 `.idea/` 未跟踪目录；它属于本机 IDE 配置，不是项目代码。
+本次整改修改：main.py、data/loader.py、cleaning/cleaner.py、tests/data/test_loader.py、tests/cleaning/test_cleaner.py、README.md、本报告。独立.venv和reports运行产物不提交；不修改旧项目。
 
 ## 3. 已实现的功能
 
-- CSV 文件存在性和空文件检查。
-- 字段别名标准化，例如中文列名、`code/date` 等映射到统一字段。
-- 必需字段检查：`symbol`、`trade_date`、`open`、`high`、`low`、`close`、`volume`、`amount`。
-- 数据来源、文件名、数据截至日期、复权口径、单位、synthetic 标志和文件 SHA-256 元信息封装。
-- 股票代码格式检查，保留六位代码前导零，要求 `000001.SZ` 或 `600000.SH` 形式。
-- 交易日期转换和数值字段转换。
-- 完全重复行情识别：保留一条，其余计入 `duplicate_removed`。
-- 同股票同日期冲突记录识别：整组计入拒绝并记录原因。
-- 缺失值、非法日期、非有限数值检查。
-- OHLC 逻辑检查：价格为正、最高价不低于开收盘价、最低价不高于开收盘价、最高价不低于最低价。
-- 成交量和成交额非负检查；零成交记录进入 `review`，不进入 accepted。
-- 按股票代码和交易日期升序排列。
-- 输出 accepted、review、rejected 三类 CSV 和 JSON 质量报告。
-- 质量报告记录输入、输出、接受、人工确认、拒绝、重复删除、修复数量和原因。
-- `main.py` 直接运行时自动加入项目 `src` 路径，不要求用户先设置 `PYTHONPATH`。
+- CSV路径、空文件、无数据行、字段缺失及别名映射冲突检查。
+- MarketDataSource Protocol与CSV适配器，来源元数据及SHA-256。
+- 按字符串读取，保护代码前导零；代码去空格、后缀转大写。
+- 遵守第一阶段规则：只接受六位代码加SH/SZ后缀，不猜测裸代码交易所。
+- 日期和数值转换、缺失和非有限值检查、OHLC和非负成交校验。
+- 完全重复去重；同键数据冲突整组拒绝，比较时缺失值参与判断。
+- 零成交进入review；accepted/review/rejected输出包含来源记录号、原始字段和处理状态、原因。
+- 所有拒绝路径统一保留明细，不再中途丢弃非法日期、代码或冲突组。
+- 来源记录号从1计数，指CSV数据记录序号，不声称是含多行引号字段文件的物理行号。
+- repaired为代码空格或大小写被修复的输入记录数；日期/数值常规类型转换不计修复。
+- 输出按symbol、trade_date排序，质量报告带元信息、原因统计和数量守恒校验。
+- loader、cleaner及入口增加logging；默认输入和输出相对项目根目录解析。
+- 没有外部日历时明确记录calendar_status=unknown_without_external_calendar，不猜测停牌或漏数。
 
 ## 4. 运行过的命令和测试结果
 
-在 `D:\code\quant-backtesting-system-rewrite` 执行：
+本次实际执行：
 
 ```powershell
+& 'D:\Program Files\Python\python.exe' -I -m venv .venv
+.\.venv\Scripts\python.exe -I -m pip install -r requirements.txt
 $env:PYTHONPATH=''
 $env:PYTHONNOUSERSITE='1'
-python --version
+.\.venv\Scripts\python.exe -m pytest tests\data tests\cleaning -q
+.\.venv\Scripts\python.exe main.py --output reports\cleaning_demo
 ```
 
-实际 Python 版本：`Python 3.12.14`。项目声明兼容 Python 3.10 至 3.11；本机本阶段使用的 Python 3.12 运行验证通过，但仍需在 Python 3.10 环境再做兼容性验证。
+环境：Python 3.10.11，Pandas 2.3.3，NumPy 2.2.6，pytest 9.2.0。测试25项全部通过，退出码0。
 
-```powershell
-python -m pytest tests\data tests\cleaning -q
-```
+演示成功：输入6、accepted 2、review 1、rejected 2、duplicate_removed 1、repaired 0。生成cleaned.csv、review.csv、rejected.csv、quality_report.json。
 
-结果：`5 passed`。
+测试涵盖正常读取、元数据摘要、缺列、文件不存在、空文件、无数据行、列名冲突、前导零、重复与冲突、原始拒绝明细、缺失值重复比较、代码修复、NaN/无穷、OHLC/负成交、日期数值转换、排序、空DataFrame和数量守恒。
 
-```powershell
-python main.py --output reports\cleaning_demo
-```
-
-结果：命令成功，生成：
-
-- `reports/cleaning_demo/cleaned.csv`
-- `reports/cleaning_demo/review.csv`
-- `reports/cleaning_demo/rejected.csv`
-- `reports/cleaning_demo/quality_report.json`
-
-演示质量报告实际统计：输入 6 行，接受 2 行，人工确认 1 行，拒绝 2 行，完全重复删除 1 行，修复 0 行。
-
-测试过程中曾发现直接运行入口时无法导入 `quant_system`，原因是 src 布局尚未加入运行路径；已在 `main.py` 修复并重新运行通过。清洗测试仍会对故意设置的非法日期给出 Pandas 的日期格式提示，不影响拒绝结果；后续可在兼容性阶段统一日期解析策略。
+之前的5项测试及Python3.12结果保留在历史提交，不能替代本次Python3.10验证。本次业务代码测试通过后未再修改业务代码。
 
 ## 5. 核心数据结构、算法和公式
 
-- `DataLoadRequest`：输入路径、来源名、数据截至日期、复权口径、单位和 synthetic 标志。
-- `DatasetMetadata`：来源文件、SHA-256、日期、复权口径、单位和测试标识。
-- `MarketData`：标准化前 DataFrame 加元数据。
-- `CleanResult`：accepted、review、rejected 三个 DataFrame 加 `QualityReport`。
-- `QualityReport`：输入输出数量、各终态数量、原因计数和元数据。
+DataLoadRequest承载读取请求；DatasetMetadata承载来源；MarketData封装DataFrame和元数据；CleanResult封装三类数据及QualityReport。
 
-清洗终态互斥分类为：
+清洗为原记录建立_source_row、_raw_*、_row_status、_reason和_repaired。按固定优先顺序确定唯一终态；每条拒绝记录保存首个主拒绝原因，而非罗列所有同时存在的问题。
 
-```text
-accepted + review + rejected + duplicate_removed = 输入总行数
-```
+重复键为symbol+trade_date；按数值字段nunique(dropna=False)判断冲突，避免忽略缺失值。类型转换后数值等价的记录按相同记录处理。
 
-`repaired` 是附加统计，不参与终态相加。
+输入数=accepted+review+rejected+duplicate_removed；repaired为附加标签，不参与相加。拒绝明细长度=报告rejected_rows。
 
-OHLC 核心校验：
-
-```text
-open > 0
-high > 0
-low > 0
-close > 0
-high >= max(open, close)
-low <= min(open, close)
-high >= low
-volume >= 0
-amount >= 0
-```
-
-完全重复按 `symbol + trade_date` 分组后比较数值字段；同键不同数值视为冲突，整组拒绝。输出排序键为 `(symbol, trade_date)`。
+OHLC均为正；high>=max(open,close)，low<=min(open,close)，high>=low；volume、amount>=0。
 
 ## 6. 采用该方案的原因
 
-CSV 读取和清洗分离，便于后续接入其他数据源而不修改策略或回测模块。数据元信息与行情数据一起传递，可以追踪来源和复权口径。`accepted/review/rejected/duplicate_removed` 的分类让自动修复、人工确认和直接拒绝边界清晰，避免用 `fillna(0)` 制造虚假行情。质量报告采用结构化 JSON，便于后续第三阶段导入批次时保存。
+数据读取与质量规则分离，可替换数据源；Pandas向量化处理便于解释；保留原字段和来源行号便于追溯；分类隔离不确定数据，避免fillna(0)制造行情。Protocol不依赖数据库或策略。
 
 ## 7. 可选替代方案
 
-- 使用 Pydantic 或 Pandera 做 DataFrame schema 校验。
-- 使用 Great Expectations 管理质量规则和数据验证报告。
-- 大文件使用 Polars 或 Pandas `chunksize` 分块读取。
-- 使用配置文件维护字段映射，而不是当前代码内的别名表。
-- 使用 `pathlib` 之外的对象存储 URI 适配器支持远程数据源。
-
-这些方案暂未实现，因为本阶段重点是让核心规则由项目代码直接表达并可测试。
+Pandera验证DataFrame、Pydantic验证元数据、Polars处理大文件、配置化字段别名、独立质量规则对象。这些替代方案本阶段不引入。
 
 ## 8. 性能瓶颈和后续优化方向
 
-当前实现一次性读取 CSV，适合本阶段小型日线数据。大文件的主要瓶颈是内存占用、重复分组和 DataFrame 拷贝。后续可增加分块读取、批量质量统计、Parquet 中间格式和矢量化规则。但分块处理必须跨块维护 `symbol + trade_date` 冲突状态，不能只加 `chunksize` 就认为结果等价。
+当前一次性CSV加载、原始列副本、分组和排序会占用内存。大数据可分块或使用列式存储，但必须跨块维护重复键。未进行性能基准，不声称任何提速比例。
 
 ## 9. 面试官可能追问的问题及回答思路
 
-**为什么不统一用 `fillna(0)`？**
-
-价格缺失和成交量缺失的业务含义不同。填 0 会制造不可能的价格或成交记录，所以关键字段缺失直接拒绝，零成交进入人工确认。
-
-**如何处理重复行情？**
-
-完全相同的重复记录保留一条并记录删除数量；同股票同日期但价格或成交数据不同，无法安全判断哪条正确，因此整组拒绝并保留原因。
-
-**为什么记录 SHA-256 和复权口径？**
-
-相同文件可幂等识别，不同文件和不同价格口径不能悄悄覆盖。这样后续回测可以追溯输入数据。
-
-**为什么数据源不能直接连接策略？**
-
-数据源只负责读取和元数据，清洗负责质量控制，策略只消费标准化数据。解耦后可以替换 CSV、API 或数据库来源。
-
-**为什么测试数据必须标记 synthetic/test？**
-
-测试数据只能证明代码流程和边界规则，不能代表真实市场收益。显式标记可以防止把演示结果误当成策略研究结论。
+- 为什么不fillna(0)？关键价格缺失不代表零，必须拒绝并留证。
+- 为何nunique使用dropna=False？缺失与有效值不一致，忽略缺失会误删冲突记录。
+- 统计守恒足够吗？还需拒绝明细一致、原字段和来源号可追溯，本阶段有测试。
+- 为什么不推断裸代码市场？遵守已确认范围，保留原值并明确拒绝，避免错误映射。
+- SHA-256证明真实性吗？只能标识内容，真实性依靠来源；测试数据明确synthetic/test。
+- 每行为什么只有一个原因？固定优先级保证终态和主原因可解释，多问题诊断可后续扩展。
 
 ## 10. 尚未完成的内容
 
-- MySQL 表结构、SQLAlchemy 模型、批量入库和事务。
-- 技术指标、双均线策略和信号持久化。
-- 回测引擎、订单、成交、资金、持仓和 T+1。
-- 绩效指标、基准和图表。
-- 真实来源行情导入和交易日历校验。
-- Python 3.10 虚拟环境下的本阶段复验；本轮使用 Python 3.12.14 验证通过。
-- 非交易日、停牌和涨跌停的外部状态判断。
+本阶段约定实现和本轮发现的验收缺陷已处理，并在Python3.10验证。边界：不接外部交易日历，不推断裸代码交易所，不修复未知单位或无法识别日期，不代表已验证真实市场行情。数据库、指标、策略、回测和绩效属于第三至第七阶段，未在本阶段实现。
 
 ## 11. 下一阶段开始前需要确认的事项
 
-第二阶段已完成，下一阶段是第三阶段“数据库和数据访问层”。开始前需要确认：
-
-1. 是否进入第三阶段。
-2. 是否使用本机 MySQL 8.0 服务和 Navicat Premium 17辅助核验。
-3. MySQL 数据库名称是否采用第一阶段设计的 `quant_db`。
-4. 真实数据库账号密码只在本机配置，不写入 Git、报告或对话文件。
-
-本报告完成后停止开发，未实现第三阶段内容，等待用户明确确认。
+请用户验收本阶段实现、测试及上述边界。只有明确确认进入第三阶段后，才开发MySQL模型、DDL、访问层及事务。数据库账号密码不写入代码、报告或Git。当前停在第二阶段，不自动推进。

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from quant_system.data.models import MarketData, REQUIRED_COLUMNS
-
 from .models import QualityReport
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -20,89 +21,90 @@ class CleanResult:
 
 
 class MarketDataCleaner:
-    """把原始行情转换为可审查的标准化数据，不静默修复关键缺失值。"""
+    """按互斥终态分类；拒绝明细保留原始字段、来源记录号和原因。"""
 
     NUMERIC_COLUMNS = ("open", "high", "low", "close", "volume", "amount")
 
     def clean(self, market_data: MarketData) -> CleanResult:
-        raw = market_data.frame.copy()
-        report = QualityReport(input_rows=len(raw), metadata={"source": market_data.metadata.source_name, "source_file": market_data.metadata.source_file, "data_as_of": market_data.metadata.data_as_of, "adjustment_type": market_data.metadata.adjustment_type, "units": market_data.metadata.units, "is_synthetic": market_data.metadata.is_synthetic})
+        raw = market_data.frame.reset_index(drop=True).copy()
+        missing = set(REQUIRED_COLUMNS) - set(raw.columns)
+        if missing:
+            raise ValueError(f"缺少必需字段: {', '.join(sorted(missing))}")
+        metadata = market_data.metadata
+        report = QualityReport(input_rows=len(raw), metadata={
+            "source": metadata.source_name, "source_file": metadata.source_file,
+            "data_as_of": metadata.data_as_of, "adjustment_type": metadata.adjustment_type,
+            "units": metadata.units, "is_synthetic": metadata.is_synthetic,
+            "extra": metadata.extra,
+            "calendar_status": "unknown_without_external_calendar",
+        })
         frame = raw.loc[:, list(REQUIRED_COLUMNS)].copy()
-        frame["symbol"] = frame["symbol"].astype("string").str.strip()
+        frame["_source_row"] = np.arange(1, len(frame) + 1)
+        for column in REQUIRED_COLUMNS:
+            frame[f"_raw_{column}"] = raw[column]
+        original_symbol = frame["symbol"].astype("string")
+        frame["symbol"] = original_symbol.str.strip().str.upper()
+        repaired = original_symbol.ne(frame["symbol"]).fillna(False)
+        frame["_repaired"] = repaired
         frame["trade_date"] = pd.to_datetime(frame["trade_date"], format="mixed", errors="coerce").dt.date
         for column in self.NUMERIC_COLUMNS:
             frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        frame["_row_status"] = "pending"
+        frame["_reason"] = ""
 
-        invalid_date = frame["trade_date"].isna()
-        if invalid_date.any():
-            report.rejected_rows += int(invalid_date.sum())
-            report.add_reason("invalid_trade_date", int(invalid_date.sum()))
-        frame = frame.loc[~invalid_date].copy()
+        def reject(mask: pd.Series, reason: str) -> None:
+            selected = mask & frame["_row_status"].eq("pending")
+            frame.loc[selected, "_row_status"] = "rejected"
+            frame.loc[selected, "_reason"] = reason
+            if selected.any():
+                report.add_reason(reason, int(selected.sum()))
 
-        invalid_symbol = ~frame["symbol"].str.fullmatch(r"\d{6}\.(SH|SZ)", na=False)
-        if invalid_symbol.any():
-            report.rejected_rows += int(invalid_symbol.sum())
-            report.add_reason("invalid_symbol", int(invalid_symbol.sum()))
-        frame = frame.loc[~invalid_symbol].copy()
+        reject(frame["trade_date"].isna(), "invalid_trade_date")
+        reject(~frame["symbol"].str.fullmatch(r"\d{6}\.(SH|SZ)", na=False), "invalid_symbol")
 
+        # dropna=False 使缺失与非缺失不同，不能将冲突记录误删为相同记录。
+        pending = frame.loc[frame["_row_status"].eq("pending")]
         key = ["symbol", "trade_date"]
-        conflict_keys = frame.groupby(key, dropna=False).size()
-        duplicate_key_values = set(conflict_keys[conflict_keys > 1].index.tolist())
-        conflict_mask = frame.set_index(key).index.isin(duplicate_key_values) if duplicate_key_values else np.zeros(len(frame), dtype=bool)
-        duplicate_group = frame.loc[conflict_mask].copy()
-        if not duplicate_group.empty:
-            duplicate_group["_row_status"] = "duplicate_candidate"
-            same_values = duplicate_group.groupby(key, dropna=False)[list(self.NUMERIC_COLUMNS)].transform("nunique").max(axis=1).eq(1)
-            exact_mask = conflict_mask.copy()
-            exact_indices = duplicate_group.index[same_values].tolist()
-            exact_mask = frame.index.isin(exact_indices)
-            exact_rows = frame.loc[exact_mask].drop_duplicates(subset=key, keep="first")
-            report.duplicate_removed_rows += len(exact_indices) - len(exact_rows)
-            if report.duplicate_removed_rows:
-                report.add_reason("exact_duplicate", report.duplicate_removed_rows)
-            conflict_indices = duplicate_group.index[~same_values].tolist()
-            report.rejected_rows += len(conflict_indices)
-            if conflict_indices:
-                report.add_reason("conflicting_duplicate", len(conflict_indices))
-            frame = frame.loc[~frame.index.isin(exact_indices + conflict_indices)].copy()
-            frame = pd.concat([frame, exact_rows], ignore_index=True)
+        counts = pending.groupby(key)[list(self.NUMERIC_COLUMNS)].transform("nunique", dropna=False)
+        conflict_indices = counts.index[counts.max(axis=1).gt(1)]
+        reject(pd.Series(frame.index.isin(conflict_indices), index=frame.index), "conflicting_duplicate")
+        pending = frame.loc[frame["_row_status"].eq("pending")]
+        duplicates = pending.index[pending.duplicated(subset=key, keep="first")]
+        frame.loc[duplicates, "_row_status"] = "duplicate_removed"
+        frame.loc[duplicates, "_reason"] = "exact_duplicate"
+        report.duplicate_removed_rows = len(duplicates)
+        if len(duplicates):
+            report.add_reason("exact_duplicate", len(duplicates))
 
-        required_values = list(self.NUMERIC_COLUMNS)
-        missing_price = frame[required_values].isna().any(axis=1)
-        if missing_price.any():
-            report.rejected_rows += int(missing_price.sum())
-            report.add_reason("missing_or_non_numeric_value", int(missing_price.sum()))
-
-        finite = np.isfinite(frame[required_values].to_numpy(dtype=float, na_value=np.nan)).all(axis=1)
-        non_finite = ~finite & ~missing_price.to_numpy()
-        if non_finite.any():
-            report.rejected_rows += int(non_finite.sum())
-            report.add_reason("non_finite_value", int(non_finite.sum()))
-
-        valid_values = ~missing_price & ~pd.Series(non_finite, index=frame.index)
-        positive_price = (frame[["open", "high", "low", "close"]] > 0).all(axis=1)
-        ohlc_valid = (
-            (frame["high"] >= frame[["open", "close"]].max(axis=1))
-            & (frame["low"] <= frame[["open", "close"]].min(axis=1))
-            & (frame["high"] >= frame["low"])
-        )
-        non_negative_turnover = (frame[["volume", "amount"]] >= 0).all(axis=1)
-        invalid_logic = valid_values & (~positive_price | ~ohlc_valid | ~non_negative_turnover)
-        if invalid_logic.any():
-            report.rejected_rows += int(invalid_logic.sum())
-            report.add_reason("invalid_ohlc_or_turnover", int(invalid_logic.sum()))
-
-        rejected_mask = missing_price | pd.Series(non_finite, index=frame.index) | invalid_logic
-        valid = frame.loc[~rejected_mask].copy()
-        review_mask = (valid["volume"] == 0) | (valid["amount"] == 0)
-        review = valid.loc[review_mask].copy()
-        accepted = valid.loc[~review_mask].copy()
-        report.review_rows = len(review)
-        report.accepted_rows = len(accepted)
-        report.output_rows = len(accepted)
+        values = frame[list(self.NUMERIC_COLUMNS)]
+        reject(values.isna().any(axis=1), "missing_or_non_numeric_value")
+        finite = pd.Series(np.isfinite(values.to_numpy(dtype=float, na_value=np.nan)).all(axis=1), index=frame.index)
+        reject(~finite, "non_finite_value")
+        prices = frame[["open", "high", "low", "close"]]
+        valid_ohlc = ((prices > 0).all(axis=1)
+                      & frame["high"].ge(frame[["open", "close"]].max(axis=1))
+                      & frame["low"].le(frame[["open", "close"]].min(axis=1))
+                      & frame["high"].ge(frame["low"]))
+        reject(~valid_ohlc | (frame[["volume", "amount"]] < 0).any(axis=1), "invalid_ohlc_or_turnover")
+        pending_mask = frame["_row_status"].eq("pending")
+        review_mask = pending_mask & (frame[["volume", "amount"]] == 0).any(axis=1)
+        frame.loc[review_mask, "_row_status"] = "review"
+        frame.loc[review_mask, "_reason"] = "zero_turnover_requires_review"
+        frame.loc[frame["_row_status"].eq("pending"), "_row_status"] = "accepted"
+        report.review_rows = int(review_mask.sum())
         if report.review_rows:
             report.add_reason("zero_turnover_requires_review", report.review_rows)
-        report.repaired_rows = 0
-        accepted = accepted.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
-        review = review.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
-        return CleanResult(accepted=accepted, review=review, rejected=frame.loc[rejected_mask].copy(), report=report)
+        report.repaired_rows = int(repaired.sum())
+        report.rejected_rows = int(frame["_row_status"].eq("rejected").sum())
+        report.accepted_rows = int(frame["_row_status"].eq("accepted").sum())
+        report.output_rows = report.accepted_rows
+        if report.input_rows != sum((report.accepted_rows, report.review_rows, report.rejected_rows, report.duplicate_removed_rows)):
+            raise RuntimeError("清洗终态数量不守恒")
+
+        def subset(status: str) -> pd.DataFrame:
+            return frame.loc[frame["_row_status"].eq(status)].sort_values(key, na_position="last").reset_index(drop=True)
+
+        logger.info("清洗完成 input=%d accepted=%d review=%d rejected=%d duplicates=%d",
+                    report.input_rows, report.accepted_rows, report.review_rows,
+                    report.rejected_rows, report.duplicate_removed_rows)
+        return CleanResult(subset("accepted"), subset("review"), subset("rejected"), report)
