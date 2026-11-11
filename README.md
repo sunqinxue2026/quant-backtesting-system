@@ -25,13 +25,25 @@ python -m pip install -r requirements.txt
 python -m pytest
 ```
 
-如果使用 PyCharm，解释器请选择 Python 3.11+，运行配置的工作目录设为项目根目录，脚本参数填写：
+如果使用 PyCharm，请按下面方式配置运行环境：
+
+- Python 解释器选择项目虚拟环境中的 Python 3.10 或更高版本；本项目已验证 Python 3.10.11。
+- 工作目录设置为项目根目录 `D:\\code\\quant-backtesting-system`。
+- 运行配置中的“脚本路径”选择项目根目录下的 `main.py`。
+- “脚本参数”必须填写行情 CSV 文件和回测参数，例如：
 
 ```text
 data/test/synthetic_demo.csv --short 2 --long 3 --output reports/demo
 ```
 
-`main.py` 已内置 `src` 路径处理，因此可以直接运行，不需要手动设置 `PYTHONPATH`。
+- 环境变量中不要设置指向其他 Python 库目录的 `PYTHONPATH`。如果当前终端或 IDE 继承了外部 `PYTHONPATH`，请将它清空；PowerShell 可执行：
+
+```powershell
+$env:PYTHONPATH=""
+$env:PYTHONNOUSERSITE="1"
+```
+
+截图中直接运行 `main.py` 而没有填写 CSV 参数时，会出现 `the following arguments are required: csv`，这是命令行参数缺失，不是代码导入错误。`main.py` 已内置 `src` 路径处理，因此在正确的项目解释器和工作目录下不需要手动设置 `PYTHONPATH`。
 
 ## 运行示例
 
