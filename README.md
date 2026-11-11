@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-第三阶段“数据库与数据访问层”已完成，等待确认后进入第四阶段。当前重写版已实现数据库模型、SQLite 本地验证和基础 Repository；指标、策略和回测仍未实现。
+第三阶段“数据库与数据访问层”已完成，等待确认后进入第四阶段。当前重写版已实现数据库模型、Repository 和 CSV 清洗结果原子入库脚本；新增端到端验证使用 SQLite，指标、策略和回测仍未实现。
 
 - 需求基线：`需求书.md`。项目按用户要求以 Python 3.10 为主要兼容版本设计。
 - 第一阶段报告：`docs/阶段1_总体设计与验收.md`。
@@ -42,11 +42,11 @@ $env:PYTHONNOUSERSITE="1"
 
 当前第二阶段测试结果：`25项全部通过`。入口会读取 `data/test/synthetic_cleaning_demo.csv`，输出清洗结果和质量报告。测试数据只用于验证流程，不代表真实市场收益。
 
-数据库、指标、策略、回测和图表命令将在对应阶段实现且实际验证后补充。
+数据库使用方式见下文；指标、策略、回测和图表命令将在对应阶段实现且实际验证后补充。
 
 ## 第二阶段整改验收
 
-拒绝输出保留原始字段、来源记录号和原因；统计与明细一致。股票代码只接受六位代码加SH/SZ后缀，规范大小写和空格，不猜测裸代码市场。repaired统计代码格式实际修复行数，普通日期和数值类型转换不计入。完整11项验收见第二阶段报告；未进入第三阶段。
+拒绝输出保留原始字段、来源记录号和原因；统计与明细一致。股票代码只接受六位代码加SH/SZ后缀，规范大小写和空格，不猜测裸代码市场。repaired统计代码格式实际修复行数，普通日期和数值类型转换不计入。完整11项验收见第二阶段报告；此处为第二阶段历史记录，当前状态见文首。
 
 ## 第三阶段数据库使用
 
@@ -64,4 +64,24 @@ $env:DATABASE_URL="mysql+pymysql://user:password@localhost:3306/quant_db?charset
 
 在 Python 中调用 `quant_system.database.create_session_factory()` 会创建模型表并返回 SQLAlchemy 会话工厂。数据库创建和字符集约定见 `database/migrations/001_init.sql`，配置模板见 `.env.example`。
 
-第三阶段已经用 SQLite 验证模型建表、批量行情写入、日期范围查询、唯一约束和事务回滚。真实 MySQL 登录、建表和事务尚未验证，详见 `docs/阶段3_数据库与数据访问层验收.md`。
+第三阶段已经用 SQLite 验证模型建表、批量行情写入、日期范围查询、唯一约束和事务回滚。已有 Navicat + MySQL 8.0.37 手工建表与事务验证；新增导入脚本尚未连接真实 MySQL 验证，详见 `docs/阶段3_数据库与数据访问层验收.md`。
+
+## 第三阶段补充：CSV 清洗结果自动入库
+
+使用项目 Python 3.10 环境。先通过环境变量 DATABASE_URL 指定项目数据库；不设置时使用默认 SQLite。MySQL 示例见 .env.example（模板不会自动加载，真实密码不得提交）。在项目根目录运行：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\import_market_data.py data\test\synthetic_cleaning_demo.csv --source synthetic/test --data-as-of 2024-01-03 --price-type "前复权研究口径" --synthetic --output reports\import_demo
+```
+
+真实 CSV 必须明确填写真实来源、截至日期、价格口径和单位，不添加 --synthetic；成交量等单位可用 --volume-unit、--amount-unit、--price-unit 指定。当前仅记录单位，不自动换算。
+
+- 只写入 accepted；review、rejected 不进入行情表，完全重复不重复写入。
+- 批次与行情在同一事务内；数据库唯一键冲突报错，整批回滚，不覆盖、不跳过。再次运行同一文件会失败，这是既定重复导入策略。
+- 无 accepted 时保存 no_accepted 批次，行情为零。
+- 价格按 6 位、成交量/额按 4 位小数 ROUND_HALF_EVEN 入库。
+- 现有 units_json 保留单位，并新增 _metadata、_quality_report 嵌套对象保存文件摘要和完整质量报告，无表结构变更。
+- 成功输出 batch_id、inserted_rows 和 committed 状态；明细输出 accepted.csv、review.csv、rejected.csv、import_report.json。
+- 数据库提交与报告写出不是同一事务：报告写出失败会提示已提交批次 ID 并退出 2，勿盲目重复导入。输入或写入失败退出 1，详细失败类型可由服务层异常定位。
+
+本次全量测试：35 个用例全部通过，其中新增 6 个导入端到端用例。命令行 SQLite 演示：6 条输入，accepted=2、review=1、rejected=2、duplicate_removed=1，成功入库 2 条。新脚本的真实 MySQL 自动化集成验证尚未执行；历史 Navicat 验证不能代替它。
