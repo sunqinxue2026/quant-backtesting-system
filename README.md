@@ -30,7 +30,7 @@ python -m pytest
 - Python 解释器选择项目虚拟环境中的 Python 3.10 或更高版本；本项目已验证 Python 3.10.11。
 - 工作目录设置为项目根目录 `D:\\code\\quant-backtesting-system`。
 - 运行配置中的“脚本路径”选择项目根目录下的 `main.py`。
-- “脚本参数”必须填写行情 CSV 文件和回测参数，例如：
+- “脚本参数”可以留空，直接运行会使用 synthetic/test 循环演示数据、2/3 日均线并输出到 reports/cycle_demo；也可以填写自定义参数，例如：
 
 ```text
 data/test/synthetic_demo.csv --short 2 --long 3 --output reports/demo
@@ -43,7 +43,7 @@ $env:PYTHONPATH=""
 $env:PYTHONNOUSERSITE="1"
 ```
 
-截图中直接运行 `main.py` 而没有填写 CSV 参数时，会出现 `the following arguments are required: csv`，这是命令行参数缺失，不是代码导入错误。`main.py` 已内置 `src` 路径处理，因此在正确的项目解释器和工作目录下不需要手动设置 `PYTHONPATH`。
+现在直接运行 `main.py` 无需 CSV 参数，会自动运行明确标记的 synthetic/test 演示。默认数据路径与输出路径均相对于项目根目录解析，不依赖 IDE 工作目录。`main.py` 已内置 `src` 路径处理，因此在正确的项目解释器和工作目录下不需要手动设置 `PYTHONPATH`。
 
 ## 运行示例
 

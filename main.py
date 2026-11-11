@@ -24,13 +24,28 @@ from quant_system.visualization.plots import plot_equity, plot_price_signals
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="运行单股票双均线回测")
-    parser.add_argument("csv", help="行情 CSV 文件")
-    parser.add_argument("--output", default="reports", help="报告输出目录")
-    parser.add_argument("--short", type=int, default=5)
-    parser.add_argument("--long", type=int, default=20)
+    parser.add_argument("csv", nargs="?", help="行情 CSV 文件；省略时运行 synthetic/test 演示")
+    parser.add_argument("--output", default=None, help="报告输出目录")
+    parser.add_argument("--short", type=int, default=None)
+    parser.add_argument("--long", type=int, default=None)
     args = parser.parse_args()
-    output = Path(args.output); output.mkdir(parents=True, exist_ok=True)
-    source = CsvMarketDataSource().load(args.csv)
+    demo = args.csv is None
+    csv_path = Path(args.csv) if not demo else PROJECT_ROOT / "data/test/synthetic_cycle_demo.csv"
+    if not csv_path.is_absolute():
+        csv_path = PROJECT_ROOT / csv_path
+    if not csv_path.is_file():
+        parser.error(f"行情 CSV 文件不存在: {csv_path}")
+    args.short = args.short if args.short is not None else (2 if demo else 5)
+    args.long = args.long if args.long is not None else (3 if demo else 20)
+    if not 0 < args.short < args.long:
+        parser.error("均线参数必须满足 0 < short < long")
+    output = Path(args.output) if args.output else Path("reports/cycle_demo" if demo else "reports")
+    if not output.is_absolute():
+        output = PROJECT_ROOT / output
+    output.mkdir(parents=True, exist_ok=True)
+    if demo:
+        print("运行 synthetic/test 合成数据演示；结果不代表真实市场收益。")
+    source = CsvMarketDataSource().load(csv_path, is_synthetic=demo)
     cleaned, quality = MarketDataCleaner().clean(source)
     enriched = add_indicators(cleaned, args.short, args.long)
     signals = DualMovingAverageStrategy(args.short, args.long).generate_signals(enriched)
@@ -41,6 +56,7 @@ def main() -> None:
     plot_equity(result.snapshots, output / "equity_curve.png")
     plot_price_signals(enriched, signals, output / "price_signals.png")
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
+    print("回测完成：已生成绩效指标、数据质量报告和两张 PNG 图表。")
 
 if __name__ == "__main__":
     main()
