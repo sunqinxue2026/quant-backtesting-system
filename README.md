@@ -17,19 +17,30 @@
 
 ## 安装与测试
 
+项目支持 Python 3.10 及更高版本，并在项目根目录执行：
+
 ```powershell
 python -m pip install -r requirements.txt
-pytest
+python -m pytest
 ```
+
+如果使用 PyCharm，解释器请选择 Python 3.11+，运行配置的工作目录设为项目根目录，脚本参数填写：
+
+```text
+data/test/synthetic_demo.csv --short 2 --long 3 --output reports/demo
+```
+
+`main.py` 已内置 `src` 路径处理，因此可以直接运行，不需要手动设置 `PYTHONPATH`。
 
 ## 运行示例
 
 测试数据明确标记为 synthetic/test，仅用于演示：
 
 ```powershell
-$env:PYTHONPATH="src"
-python main.py data/test/synthetic_demo.csv --short 2 --long 3 --output reports
+python main.py data/test/synthetic_demo.csv --short 2 --long 3 --output reports/demo
 ```
+
+运行成功后会生成质量报告、绩效指标 JSON、账户净值曲线 PNG 和价格均线信号图 PNG。当前演示数据较短，可能没有完整的买卖配对；要解释胜率和盈亏比，需要使用包含完整持仓周期的真实来源历史数据。
 
 真实 CSV 至少需要字段：`symbol,trade_date,open,high,low,close,volume,amount`。导入真实数据时必须同时记录来源、数据日期和复权口径，不能把示例数据当作真实市场数据。
 

@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local configuration and generated database
+.env
+*.db
+
+# IDE
+.idea/
+.vscode/
+
+# Generated reports
+reports/*
+!reports/.gitkeep

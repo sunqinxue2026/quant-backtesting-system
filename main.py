@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+# 支持直接运行 main.py（包括 PyCharm 的“运行当前文件”配置）。
+# 通过 pyproject.toml 安装项目或设置 PYTHONPATH 时不会产生副作用。
+PROJECT_ROOT = Path(__file__).resolve().parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from quant_system.cleaning.cleaner import MarketDataCleaner
 from quant_system.data.loader import CsvMarketDataSource
