@@ -1,0 +1,9 @@
+{
+  "input_rows": 10,
+  "output_rows": 10,
+  "repaired_rows": 0,
+  "duplicate_rows": 0,
+  "rejected_rows": 0,
+  "review_rows": 0,
+  "issues": []
+}

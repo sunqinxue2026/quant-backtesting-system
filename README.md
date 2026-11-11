@@ -1,45 +1,48 @@
 # Python Quantitative Data Processing and Backtesting System
 
-基于 Python 的量化金融数据处理与策略回测系统，面向国内初级量化开发工程师求职作品开发。
+面向国内初级量化开发工程师求职作品的日频股票研究型回测系统。
 
-## 当前状态
+## 已实现功能
 
-项目当前处于第一阶段：完成总体技术方案、业务规则、数据口径和开发计划，尚未进入业务代码实现阶段。
+- CSV 行情数据源适配器与质量报告
+- 字段、日期、代码标准化；重复记录、OHLC、成交量和成交额校验
+- SQLAlchemy 七张业务表，支持 MySQL 8.0 和 SQLite 测试
+- 日收益率、累计收益率、SMA、EMA、滚动波动率、成交量均线
+- 双均线交叉策略：收盘产生信号，下一交易日开盘执行
+- 单股票、现货、仅做多、无杠杆组合管理
+- 手续费、卖出印花税、滑点、交易单位和资金不足处理
+- 账户净值、年化收益、波动率、最大回撤和夏普比率
+- 净值曲线与价格信号图表
+- pytest 核心业务测试
 
-详细需求与验收标准见：
+## 安装与测试
 
-- `量化金融数据处理与策略回测系统_完善版需求书.md`
+```powershell
+python -m pip install -r requirements.txt
+pytest
+```
 
-## 第一版范围
+## 运行示例
 
-- 中国 A 股日频股票研究型回测
-- 单只股票、现货、仅做多、无杠杆
-- CSV 行情读取与数据清洗
-- MySQL 8.0 与 SQLAlchemy 数据持久化
-- 技术指标计算与双均线交叉策略
-- 收盘生成信号、下一可交易日开盘模拟成交
-- 手续费、滑点、资金不足和交易时序处理
-- 绩效分析、Matplotlib 图表和 pytest 测试
+测试数据明确标记为 synthetic/test，仅用于演示：
 
-## 开发阶段
+```powershell
+$env:PYTHONPATH="src"
+python main.py data/test/synthetic_demo.csv --short 2 --long 3 --output reports
+```
 
-1. 检查环境，完成总体设计和数据库设计
-2. 建立工程骨架，实现行情读取和数据清洗
-3. 完成 MySQL 数据库设计和数据访问层
-4. 完成技术指标与双均线策略
-5. 完成回测引擎、订单执行和账户管理
-6. 完成绩效指标与图表
-7. 完成测试、Bug 修复和完整 README
+真实 CSV 至少需要字段：`symbol,trade_date,open,high,low,close,volume,amount`。导入真实数据时必须同时记录来源、数据日期和复权口径，不能把示例数据当作真实市场数据。
 
-## 数据说明
+## 数据库
 
-项目不伪造真实市场数据。真实行情需要保留来源、日期、复权口径和数据质量信息；测试数据必须明确标记为 synthetic/test，仅用于自动化测试。
+默认使用 `sqlite:///quant_backtesting.db`。连接 MySQL 时设置：
 
-## 开发约定
+```powershell
+$env:DATABASE_URL="mysql+pymysql://user:password@localhost:3306/quant_db?charset=utf8mb4"
+```
 
-- 使用 Python 3.11+
-- 采用分层模块设计和类型注解
-- 核心业务逻辑配套 pytest 测试
-- 数据库连接信息通过环境变量配置
-- 不连接真实券商账户，不发送真实交易订单
-- 每个阶段完成后先进行测试和设计说明，再进入下一阶段
+然后调用 `quant_system.database.create_session_factory()`，数据库表会由 SQLAlchemy 创建。初始化说明见 `database/migrations/001_init.sql`。
+
+## 交易时序
+
+`t` 日收盘后用当日均线交叉生成信号，最早在 `t+1` 交易日开盘执行。成交价按买入上滑、卖出下滑的滑点规则处理。研究结果不代表真实可成交收益，也不连接券商账户。
