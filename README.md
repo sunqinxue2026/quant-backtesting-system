@@ -11,7 +11,7 @@
 - 第二阶段报告：`docs/阶段2_CSV读取与数据清洗验收.md`。
 - 第二阶段测试：25项全部通过；清洗演示已生成 cleaned、review、rejected 和 quality_report 文件。
 - 本阶段已建立独立 .venv，使用 Python 3.10.11、Pandas 2.3.3、NumPy 2.2.6、pytest 9.2.0 验证通过。
-- 检测到 MySQL 8 服务 Running，尚未验证登录、建表或事务；数据库属于第三阶段。
+- 已通过 Navicat Premium 17 连接 localhost:3306 的 MySQL 8.0.37，完成项目专用数据库 quant_db 的建表、写入、查询、唯一约束和事务回滚验证；重复插入被错误 1062 拒绝，回滚后行情数量仍为 2 条。
 
 ## 与旧版本的关系
 
