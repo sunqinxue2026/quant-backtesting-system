@@ -19,6 +19,16 @@ class StockBasic(Base):
     delist_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(16), default="listed")
 
+class DataImportBatch(Base):
+    __tablename__ = "data_import_batch"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(255))
+    price_type: Mapped[str] = mapped_column(String(32))
+    data_as_of: Mapped[date | None] = mapped_column(Date)
+    quality_status: Mapped[str] = mapped_column(String(24), default="raw")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class StockDaily(Base):
     __tablename__ = "stock_daily"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -32,7 +42,8 @@ class StockDaily(Base):
     amount: Mapped[float] = mapped_column(Float)
     source: Mapped[str] = mapped_column(String(255))
     price_type: Mapped[str] = mapped_column(String(32))
-    __table_args__ = (UniqueConstraint("symbol", "trade_date", name="uq_stock_daily_symbol_date"),)
+    import_batch_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("data_import_batch.id"))
+    __table_args__ = (UniqueConstraint("symbol", "trade_date", "price_type", name="uq_stock_daily_symbol_date_type"),)
 
 class StrategyConfig(Base):
     __tablename__ = "strategy_config"

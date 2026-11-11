@@ -11,6 +11,7 @@ class Order:
     side: str
     quantity: int
     status: str = "PENDING"
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -24,16 +25,27 @@ class Trade:
 
     @property
     def net_cash_flow(self) -> float:
-        """成交对现金的净影响：买入为负，卖出为正。"""
         gross = self.price * self.quantity
         costs = self.commission + self.tax
         return -gross - costs if self.side == "BUY" else gross - costs
 
 
 @dataclass
+class PositionLot:
+    quantity: int
+    average_price: float
+    buy_date: date
+
+
+@dataclass
 class Position:
     quantity: int = 0
     average_price: float = 0.0
+    lots: list[PositionLot] | None = None
+
+    def __post_init__(self) -> None:
+        if self.lots is None:
+            self.lots = []
 
 
 @dataclass(frozen=True)

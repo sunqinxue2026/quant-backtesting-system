@@ -22,8 +22,8 @@ def test_performance_pairs_completed_trades() -> None:
     metrics = PerformanceAnalyzer(risk_free_rate=0).analyze(snapshots, trades)
     assert metrics["completed_trade_count"] == 1
     assert metrics["win_rate"] == 1
-    # 没有亏损交易时没有盈亏比的分母，按约定返回 0。
-    assert metrics["profit_loss_ratio"] == 0
+    # 没有亏损交易时没有盈亏比的分母，按需求口径返回空值。
+    assert metrics["profit_loss_ratio"] is None
     assert metrics["average_holding_days"] == 3
 
     mixed_trades = trades + [

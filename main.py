@@ -5,8 +5,6 @@ import json
 import sys
 from pathlib import Path
 
-# 支持直接运行 main.py（包括 PyCharm 的“运行当前文件”配置）。
-# 通过 pyproject.toml 安装项目或设置 PYTHONPATH 时不会产生副作用。
 PROJECT_ROOT = Path(__file__).resolve().parent
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
@@ -19,7 +17,7 @@ from quant_system.engine.portfolio import Portfolio
 from quant_system.indicators.technical import add_indicators
 from quant_system.performance.analyzer import PerformanceAnalyzer
 from quant_system.strategies.dual_ma import DualMovingAverageStrategy
-from quant_system.visualization.plots import plot_equity, plot_price_signals
+from quant_system.visualization.plots import plot_drawdown, plot_equity, plot_price_signals, plot_strategy_vs_benchmark
 
 
 def main() -> None:
@@ -51,12 +49,22 @@ def main() -> None:
     signals = DualMovingAverageStrategy(args.short, args.long).generate_signals(enriched)
     result = BacktestEngine(Portfolio(1_000_000)).run(enriched, signals)
     metrics = PerformanceAnalyzer().analyze(result.snapshots, result.trades)
-    (output / "quality_report.json").write_text(json.dumps(quality.__dict__, ensure_ascii=False, indent=2), encoding="utf-8")
+    quality_payload = quality.to_dict()
+    quality_payload["strategy_parameters"] = {"short_window": args.short, "long_window": args.long}
+    quality_payload["cost_parameters"] = {"commission_rate": 0.0003, "min_commission": 0.0, "stamp_tax_rate": 0.0005, "slippage_bps": 10.0, "lot_size": 100}
+    (output / "quality_report.json").write_text(json.dumps(quality_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     (output / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+    result.snapshots["drawdown"] = result.snapshots["total_value"] / result.snapshots["total_value"].cummax() - 1
+    result.snapshots.to_csv(output / "account_snapshots.csv", index=False)
+    if result.orders:
+        (output / "orders.json").write_text(json.dumps([o.__dict__ for o in result.orders], ensure_ascii=False, default=str, indent=2), encoding="utf-8")
     plot_equity(result.snapshots, output / "equity_curve.png")
+    plot_drawdown(result.snapshots, output / "drawdown_curve.png")
     plot_price_signals(enriched, signals, output / "price_signals.png")
+    plot_strategy_vs_benchmark(result.snapshots, enriched.set_index("trade_date")["close"], output / "strategy_vs_benchmark.png")
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
-    print("回测完成：已生成绩效指标、数据质量报告和两张 PNG 图表。")
+    print("回测完成：已生成绩效指标、质量报告、账户快照和四类 PNG 图表。")
+
 
 if __name__ == "__main__":
     main()
