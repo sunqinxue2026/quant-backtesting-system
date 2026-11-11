@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-第二阶段“工程骨架、CSV读取和数据清洗”已完成，等待确认后进入第三阶段。当前重写版尚未实现数据库、指标、策略或回测。
+第三阶段“数据库与数据访问层”已完成，等待确认后进入第四阶段。当前重写版已实现数据库模型、SQLite 本地验证和基础 Repository；指标、策略和回测仍未实现。
 
 - 需求基线：`需求书.md`。项目按用户要求以 Python 3.10 为主要兼容版本设计。
 - 第一阶段报告：`docs/阶段1_总体设计与验收.md`。
@@ -47,3 +47,21 @@ $env:PYTHONNOUSERSITE="1"
 ## 第二阶段整改验收
 
 拒绝输出保留原始字段、来源记录号和原因；统计与明细一致。股票代码只接受六位代码加SH/SZ后缀，规范大小写和空格，不猜测裸代码市场。repaired统计代码格式实际修复行数，普通日期和数值类型转换不计入。完整11项验收见第二阶段报告；未进入第三阶段。
+
+## 第三阶段数据库使用
+
+默认数据库连接为：
+
+```text
+sqlite:///quant_backtesting.db
+```
+
+设置 MySQL 8.0 连接时使用环境变量：
+
+```powershell
+$env:DATABASE_URL="mysql+pymysql://user:password@localhost:3306/quant_db?charset=utf8mb4"
+```
+
+在 Python 中调用 `quant_system.database.create_session_factory()` 会创建模型表并返回 SQLAlchemy 会话工厂。数据库创建和字符集约定见 `database/migrations/001_init.sql`，配置模板见 `.env.example`。
+
+第三阶段已经用 SQLite 验证模型建表、批量行情写入、日期范围查询、唯一约束和事务回滚。真实 MySQL 登录、建表和事务尚未验证，详见 `docs/阶段3_数据库与数据访问层验收.md`。
