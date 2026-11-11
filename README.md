@@ -13,7 +13,8 @@
 - 手续费、卖出印花税、滑点、交易单位和资金不足处理
 - 账户净值、年化收益、波动率、最大回撤和夏普比率
 - 净值曲线与价格信号图表
-- pytest 核心业务测试
+- pytest 核心业务测试与 SQLite 数据库事务测试
+- 策略信号、订单、成交、每日账户快照和回测结果持久化
 
 ## 安装与测试
 
@@ -40,7 +41,13 @@ data/test/synthetic_demo.csv --short 2 --long 3 --output reports/demo
 python main.py data/test/synthetic_demo.csv --short 2 --long 3 --output reports/demo
 ```
 
-运行成功后会生成质量报告、绩效指标 JSON、账户净值曲线 PNG 和价格均线信号图 PNG。当前演示数据较短，可能没有完整的买卖配对；要解释胜率和盈亏比，需要使用包含完整持仓周期的真实来源历史数据。
+运行成功后会生成质量报告、绩效指标 JSON、账户净值曲线 PNG 和价格均线信号图 PNG。若希望观察完整的买卖配对，可运行项目内明确标记为 synthetic/test 的循环演示数据：
+
+```powershell
+python main.py data/test/synthetic_cycle_demo.csv --short 2 --long 3 --output reports/cycle_demo
+```
+
+该文件只用于测试策略流程，不代表真实市场收益。使用真实来源历史数据时，胜率和盈亏比才具有研究解释价值。
 
 真实 CSV 至少需要字段：`symbol,trade_date,open,high,low,close,volume,amount`。导入真实数据时必须同时记录来源、数据日期和复权口径，不能把示例数据当作真实市场数据。
 

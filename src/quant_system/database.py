@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Date, DateTime, Float, Integer, Numeric, String, Text, UniqueConstraint, create_engine
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 class Base(DeclarativeBase):
@@ -50,15 +50,28 @@ class BacktestTask(Base):
     status: Mapped[str] = mapped_column(String(16), default="created")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+class BacktestSignal(Base):
+    __tablename__ = "backtest_signal"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("backtest_task.id"), index=True)
+    symbol: Mapped[str] = mapped_column(String(16))
+    signal_date: Mapped[date] = mapped_column(Date)
+    side: Mapped[str] = mapped_column(String(8))
+    short_value: Mapped[float] = mapped_column(Float)
+    long_value: Mapped[float] = mapped_column(Float)
+    __table_args__ = (UniqueConstraint("task_id", "signal_date", name="uq_signal_task_date"),)
+
+
 class BacktestOrder(Base):
     __tablename__ = "backtest_order"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    task_id: Mapped[int] = mapped_column(Integer, index=True)
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("backtest_task.id"), index=True)
     signal_date: Mapped[date] = mapped_column(Date)
     execute_date: Mapped[date] = mapped_column(Date)
     side: Mapped[str] = mapped_column(String(8))
     quantity: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(16))
+
 
 class BacktestTrade(Base):
     __tablename__ = "backtest_trade"
@@ -72,12 +85,26 @@ class BacktestTrade(Base):
     commission: Mapped[float] = mapped_column(Float)
     tax: Mapped[float] = mapped_column(Float)
 
+class BacktestSnapshot(Base):
+    __tablename__ = "backtest_snapshot"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("backtest_task.id"), index=True)
+    trade_date: Mapped[date] = mapped_column(Date)
+    cash: Mapped[float] = mapped_column(Numeric(18, 2))
+    position_quantity: Mapped[int] = mapped_column(Integer)
+    close_price: Mapped[float] = mapped_column(Numeric(18, 4))
+    total_value: Mapped[float] = mapped_column(Numeric(18, 2))
+    daily_return: Mapped[float] = mapped_column(Float)
+    __table_args__ = (UniqueConstraint("task_id", "trade_date", name="uq_snapshot_task_date"),)
+
+
 class BacktestResult(Base):
     __tablename__ = "backtest_result"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    task_id: Mapped[int] = mapped_column(Integer, unique=True)
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("backtest_task.id"), unique=True)
     metrics_json: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 
 def create_session_factory(url: str | None = None):
     database_url = url or os.getenv("DATABASE_URL", "sqlite:///quant_backtesting.db")

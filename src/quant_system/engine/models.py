@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+
 @dataclass(frozen=True)
 class Order:
     signal_date: date
@@ -10,6 +11,7 @@ class Order:
     side: str
     quantity: int
     status: str = "PENDING"
+
 
 @dataclass(frozen=True)
 class Trade:
@@ -20,10 +22,19 @@ class Trade:
     commission: float
     tax: float
 
+    @property
+    def net_cash_flow(self) -> float:
+        """成交对现金的净影响：买入为负，卖出为正。"""
+        gross = self.price * self.quantity
+        costs = self.commission + self.tax
+        return -gross - costs if self.side == "BUY" else gross - costs
+
+
 @dataclass
 class Position:
     quantity: int = 0
     average_price: float = 0.0
+
 
 @dataclass(frozen=True)
 class PortfolioSnapshot:
