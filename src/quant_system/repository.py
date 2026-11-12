@@ -28,7 +28,7 @@ class MarketDataRepository:
             self.session.flush()
         return len(items)
 
-    def query_daily(self, symbol: str, start: date, end: date, price_type: str) -> list[StockDaily]:
+    def query_daily(self, symbol: str, start: date, end: date, price_type: str, batch_id: int | None = None) -> list[StockDaily]:
         statement = (
             select(StockDaily)
             .where(
@@ -39,6 +39,8 @@ class MarketDataRepository:
             )
             .order_by(StockDaily.trade_date)
         )
+        if batch_id is not None:
+            statement = statement.where(StockDaily.import_batch_id == batch_id)
         return list(self.session.scalars(statement))
 
     def count_daily(self, symbol: str | None = None) -> int:

@@ -65,4 +65,5 @@ def add_indicators(
     )
     result["annualized_rolling_volatility"] = result["rolling_volatility"] * np.sqrt(annualization_days)
     result["volume_ma"] = grouped_volume.transform(lambda series: series.rolling(volume_window, min_periods=volume_window).mean())
+    result.attrs["indicator_params"] = {"short_window": short_window, "long_window": long_window}
     return result

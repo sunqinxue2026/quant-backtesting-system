@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-第四阶段已由用户验收；第五阶段“回测引擎、订单执行与账户管理”已实现并验证，等待用户验收。全量测试94项通过（第五阶段新增28项）；确定性合成演示2笔成交、9个快照，最终资产9700元。绩效分析与图表尚未实现，不自动进入第六阶段。完整11项报告见 `docs/阶段5_回测引擎与账户管理验收.md`。
+第四阶段已由用户验收；第五阶段“回测引擎、订单执行与账户管理”已实现并验证，等待用户验收。全量测试108项通过（第五阶段原28项，加跨模块集成14项）；确定性合成演示2笔成交、9个快照，最终资产9700元。绩效分析与图表尚未实现，不自动进入第六阶段。完整11项报告见 `docs/阶段5_回测引擎与账户管理验收.md`。
 
 第五阶段运行方法（项目根目录，使用项目虚拟环境）：
 
@@ -13,7 +13,7 @@
 .venv\Scripts\python.exe -I scripts\run_backtest_demo.py
 ```
 
-演示仅使用synthetic/test合成行情，不连接数据库，生成execution.json和snapshots.csv。持久化服务为 `quant_system.engine.persistence.save_execution`，在调用方事务中保存订单、成交、快照；新增执行持久化已用SQLite验证，尚未对真实MySQL订单成交做新增实测。
+演示仅使用synthetic/test合成行情，不连接数据库，生成execution.json和snapshots.csv。持久化服务为 `quant_system.engine.persistence.save_execution`，在调用方事务中保存订单、成交、快照；新增执行持久化及CSV全链路已用SQLite验证，尚未对真实MySQL订单成交做新增实测。
 
 - 需求基线：`需求书.md`。项目按用户要求以 Python 3.10 为主要兼容版本设计。
 - 第一阶段报告：`docs/阶段1_总体设计与验收.md`。
@@ -101,3 +101,27 @@ $env:DATABASE_URL="mysql+pymysql://user:password@localhost:3306/quant_db?charset
 入口已支持安全分类数据库错误：重复键的真实驱动错误为 1062 时，显示 `type=IntegrityError db_code=1062 reason=重复键冲突`；其他约束和连接问题分别分类，不输出异常正文、SQL、参数或连接串。数据库初始化失败也统一处理。失败仍退出 1。
 
 第三阶段错误日志整改全量测试为 45 项通过（新增 10 项安全日志测试）；1062 分类测试使用模拟驱动异常，随后用户以相同 PyCharm 参数运行，新版真实日志显示 `type=IntegrityError db_code=1062 reason=重复键冲突`，退出码 1，现场日志核验已完成。数量不变引用此前 Navicat 截图及用户两次查询反馈，详见第三阶段验收文档。第四阶段报告见 `docs/阶段4_技术指标与双均线策略验收.md`，第四阶段已验收，第五阶段实现与验证结果见文首和第五阶段报告。
+
+
+## 第五阶段补齐：统一CSV/批次回测入口
+
+完整链路：CSV读取清洗 → 导入批次和行情提交 → 指定批次查询 → 标准DataFrame → 指标 → 策略 → 次日开盘执行 → 配置、任务、信号、订单、成交、快照原子保存。
+
+首次运行独立SQLite演示（synthetic/test合成数据，零成本，不代表市场收益）：
+
+```text
+.venv\Scripts\python.exe -I scripts\run_pipeline.py --csv data/test/synthetic_pipeline_demo.csv --source synthetic/test --data-as-of 2024-01-12 --synthetic --price-type 未复权 --symbol 000001.SZ --start 2024-01-02 --end 2024-01-12 --zero-cost
+```
+
+默认数据库为 reports/stage5_pipeline/demo.db，不读取DATABASE_URL。首次导入预期批次1、任务1、2信号、2订单、2成交、9快照、最终资产9700.00。重复相同CSV导入会触发唯一约束；不要改价格口径规避。重跑已有批次应改用：
+
+```text
+.venv\Scripts\python.exe -I scripts\run_pipeline.py --batch-id 1 --price-type 未复权 --symbol 000001.SZ --start 2024-01-02 --end 2024-01-12 --zero-cost
+```
+
+以实际batch_id替换1；每次重跑创建新任务，旧任务结果不覆盖。
+使用已配置数据库必须明确增加 --database configured，并在本机设置DATABASE_URL；连接串不入库、不打印。MySQL写入需使用项目专用测试库，本轮没有执行MySQL验证。
+
+指标函数在DataFrame.attrs记录均线参数，策略在元数据存在时拒绝参数不匹配；统一入口保证由同一参数计算并运行。手工构造的旧式指标帧仍兼容，若attrs缺失则无法单靠列名证明周期，调用方须保证来源。
+
+新增14项测试：全链路手算及入库查询、分类与批次隔离、4项输入边界、执行事务回滚、成本传递、未来数据不变性、参数不匹配及4项信号契约错误。全量108项通过，保留2条既有测试数据类型FutureWarning。

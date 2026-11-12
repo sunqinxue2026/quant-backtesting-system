@@ -61,7 +61,7 @@ class BacktestEngine:
         self._trade_id = 0
 
     def run(self, data: pd.DataFrame) -> BacktestResult:
-        required = {"symbol", "trade_date", "open", "close", "sma_short", "sma_long"}
+        required = {"symbol", "trade_date", "open", "close"} | set(getattr(self.strategy, "required_columns", ()))
         missing = sorted(required - set(data.columns))
         if missing:
             raise ValueError(f"回测输入缺少字段: {', '.join(missing)}")
@@ -82,6 +82,16 @@ class BacktestEngine:
             raise ValueError("第五阶段第一版只支持单股票")
 
         signal_frame = self.strategy.generate_signals(frame)
+        required_signals = {"symbol", "trade_date", "side"}
+        if not isinstance(signal_frame, pd.DataFrame) or not required_signals.issubset(signal_frame.columns):
+            raise ValueError("信号输出缺少字段")
+        signal_frame = signal_frame.copy()
+        signal_frame["trade_date"] = pd.to_datetime(signal_frame["trade_date"], errors="raise").dt.date
+        if (signal_frame["trade_date"].isna().any()
+            or not signal_frame["trade_date"].isin(frame["trade_date"]).all()
+            or not signal_frame["symbol"].isin(frame["symbol"]).all()
+            or not signal_frame["side"].isin(["BUY", "SELL"]).all()):
+            raise ValueError("信号股票、日期或方向无效")
         if signal_frame.duplicated(["symbol", "trade_date"]).any():
             raise ValueError("同股票同日存在重复交易信号")
         signal_by_date = {row.trade_date: row for row in signal_frame.itertuples(index=False)}

@@ -32,8 +32,13 @@ class DualMovingAverageStrategy:
         self.short_column = "sma_short"
         self.long_column = "sma_long"
 
+    required_columns = {"sma_short", "sma_long"}
+
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         """生成交叉信号，只使用当前行和前一行指标。"""
+        params = data.attrs.get("indicator_params")
+        if params is not None and params != {"short_window": self.short_window, "long_window": self.long_window}:
+            raise ValueError("指标与策略参数不一致")
         required = {"symbol", "trade_date", self.short_column, self.long_column}
         missing = sorted(required - set(data.columns))
         if missing:
