@@ -64,7 +64,7 @@ $env:DATABASE_URL="mysql+pymysql://user:password@localhost:3306/quant_db?charset
 
 在 Python 中调用 `quant_system.database.create_session_factory()` 会创建模型表并返回 SQLAlchemy 会话工厂。数据库创建和字符集约定见 `database/migrations/001_init.sql`，配置模板见 `.env.example`。
 
-第三阶段已经用 SQLite 验证模型建表、批量行情写入、日期范围查询、唯一约束和事务回滚。已有 Navicat + MySQL 8.0.37 手工建表与事务验证；新增导入脚本已完成真实 MySQL 正常导入，用户补充相同参数第二次运行退出码 1、两次查询均为 1 个批次和 2 条行情的手动验证证据；第二次日志未展示底层错误编号，详见 `docs/阶段3_数据库与数据访问层验收.md`。
+第三阶段已经用 SQLite 验证模型建表、批量行情写入、日期范围查询、唯一约束和事务回滚。已有 Navicat + MySQL 8.0.37 手工建表与事务验证；新增导入脚本已完成真实 MySQL 正常导入，用户补充相同参数第二次运行退出码 1、两次查询均为 1 个批次和 2 条行情的手动验证证据；旧日志未展示底层编号；后续用户提供新版真实日志，已捕获 IntegrityError / db_code=1062 / 重复键冲突（退出码1），详见 `docs/阶段3_数据库与数据访问层验收.md`。
 
 ## 第三阶段补充：CSV 清洗结果自动入库
 
@@ -84,11 +84,11 @@ $env:DATABASE_URL="mysql+pymysql://user:password@localhost:3306/quant_db?charset
 - 成功输出 batch_id、inserted_rows 和 committed 状态；明细输出 accepted.csv、review.csv、rejected.csv、import_report.json。
 - 数据库提交与报告写出不是同一事务：报告写出失败会提示已提交批次 ID 并退出 2，勿盲目重复导入。输入或写入失败退出 1，详细失败类型可由服务层异常定位。
 
-本次全量测试：35 个用例全部通过，其中新增 6 个导入端到端用例。命令行 SQLite 演示：6 条输入，accepted=2、review=1、rejected=2、duplicate_removed=1，成功入库 2 条。新脚本的真实 MySQL 手动验证使用 synthetic_gui_test_01：首次 batch_id=7、写入 2 条、退出 0；重复运行退出 1，用户反馈数量仍为 1 个批次、2 条行情。通用错误日志未显示底层编号；真实 MySQL 自动化集成验证尚未实现。35 项通过为此前结果，本次文档更新未重跑测试。
+本次全量测试：35 个用例全部通过，其中新增 6 个导入端到端用例。命令行 SQLite 演示：6 条输入，accepted=2、review=1、rejected=2、duplicate_removed=1，成功入库 2 条。新脚本的真实 MySQL 手动验证使用 synthetic_gui_test_01：首次 batch_id=7、写入 2 条、退出 0；重复运行退出 1，用户反馈数量仍为 1 个批次、2 条行情。当时通用错误日志未显示底层编号；新版真实1062证据见下节。真实 MySQL 自动化集成验证尚未实现。35 项通过为此前结果，本次文档更新未重跑测试。
 
 
 ## 第三阶段错误日志整改
 
 入口已支持安全分类数据库错误：重复键的真实驱动错误为 1062 时，显示 `type=IntegrityError db_code=1062 reason=重复键冲突`；其他约束和连接问题分别分类，不输出异常正文、SQL、参数或连接串。数据库初始化失败也统一处理。失败仍退出 1。
 
-本轮全量测试 45 项通过（新增 10 项安全日志测试）；1062 测试使用模拟驱动异常，不代表本轮实际连接 MySQL。前文 35 项及通用日志为历史验证记录。需要以原 PyCharm 配置再次运行后，根据实际错误编号及 Navicat 数量核验补充真实证据，不能改写旧日志。完整 11 项整改报告见第三阶段验收文档。
+本轮全量测试 45 项通过（新增 10 项安全日志测试）；1062 测试使用模拟驱动异常，不代表本轮实际连接 MySQL。前文 35 项及通用日志为历史验证记录。随后用户以相同 PyCharm 参数运行，新版真实日志显示 `type=IntegrityError db_code=1062 reason=重复键冲突`，退出码1，现场日志核验已完成。数量不变引用此前 Navicat 截图及用户两次查询反馈，本次新版运行后未新增数量截图，不能将不同次证据混写。最终11项验收汇总见第三阶段验收文档末尾，仍等待用户确认，不进入第四阶段。
