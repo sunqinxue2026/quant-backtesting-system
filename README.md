@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-第三阶段“数据库与数据访问层”已完成，等待确认后进入第四阶段。当前重写版已实现数据库模型、Repository 和 CSV 清洗结果原子入库脚本；新增端到端验证使用 SQLite，指标、策略和回测仍未实现。
+第三阶段“数据库与数据访问层”已完成，等待确认后进入第四阶段。当前重写版已实现数据库模型、Repository 和 CSV 清洗结果原子入库脚本；端到端自动化验证使用 SQLite，并已补充 PyCharm 导入与 Navicat 查询的真实 MySQL 手动验证；指标、策略和回测仍未实现。
 
 - 需求基线：`需求书.md`。项目按用户要求以 Python 3.10 为主要兼容版本设计。
 - 第一阶段报告：`docs/阶段1_总体设计与验收.md`。
@@ -64,7 +64,7 @@ $env:DATABASE_URL="mysql+pymysql://user:password@localhost:3306/quant_db?charset
 
 在 Python 中调用 `quant_system.database.create_session_factory()` 会创建模型表并返回 SQLAlchemy 会话工厂。数据库创建和字符集约定见 `database/migrations/001_init.sql`，配置模板见 `.env.example`。
 
-第三阶段已经用 SQLite 验证模型建表、批量行情写入、日期范围查询、唯一约束和事务回滚。已有 Navicat + MySQL 8.0.37 手工建表与事务验证；新增导入脚本尚未连接真实 MySQL 验证，详见 `docs/阶段3_数据库与数据访问层验收.md`。
+第三阶段已经用 SQLite 验证模型建表、批量行情写入、日期范围查询、唯一约束和事务回滚。已有 Navicat + MySQL 8.0.37 手工建表与事务验证；新增导入脚本已完成真实 MySQL 正常导入，用户补充相同参数第二次运行退出码 1、两次查询均为 1 个批次和 2 条行情的手动验证证据；第二次日志未展示底层错误编号，详见 `docs/阶段3_数据库与数据访问层验收.md`。
 
 ## 第三阶段补充：CSV 清洗结果自动入库
 
@@ -84,4 +84,4 @@ $env:DATABASE_URL="mysql+pymysql://user:password@localhost:3306/quant_db?charset
 - 成功输出 batch_id、inserted_rows 和 committed 状态；明细输出 accepted.csv、review.csv、rejected.csv、import_report.json。
 - 数据库提交与报告写出不是同一事务：报告写出失败会提示已提交批次 ID 并退出 2，勿盲目重复导入。输入或写入失败退出 1，详细失败类型可由服务层异常定位。
 
-本次全量测试：35 个用例全部通过，其中新增 6 个导入端到端用例。命令行 SQLite 演示：6 条输入，accepted=2、review=1、rejected=2、duplicate_removed=1，成功入库 2 条。新脚本的真实 MySQL 自动化集成验证尚未执行；历史 Navicat 验证不能代替它。
+本次全量测试：35 个用例全部通过，其中新增 6 个导入端到端用例。命令行 SQLite 演示：6 条输入，accepted=2、review=1、rejected=2、duplicate_removed=1，成功入库 2 条。新脚本的真实 MySQL 手动验证使用 synthetic_gui_test_01：首次 batch_id=7、写入 2 条、退出 0；重复运行退出 1，用户反馈数量仍为 1 个批次、2 条行情。通用错误日志未显示底层编号；真实 MySQL 自动化集成验证尚未实现。35 项通过为此前结果，本次文档更新未重跑测试。
