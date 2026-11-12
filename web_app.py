@@ -305,7 +305,12 @@ elif page == '任务与逐日回放':
         orders=table(BacktestOrder,s,BacktestOrder.task_id==int(tid))
         trades=table(BacktestTrade,s,BacktestTrade.task_id==int(tid))
         task=s.get(BacktestTask,int(tid)); config=s.get(StrategyConfig,task.strategy_config_id)
-        prices=table(StockDaily,s,StockDaily.import_batch_id==task.data_batch_id,StockDaily.symbol==task.symbol)
+        prices=table(StockDaily,s,
+            StockDaily.import_batch_id==task.data_batch_id,
+            StockDaily.symbol==task.symbol,
+            StockDaily.price_type==config.params_json['price_type'],
+            StockDaily.trade_date>=date.fromisoformat(config.params_json['start']),
+            StockDaily.trade_date<=date.fromisoformat(config.params_json['end']))
     st.write(f'股票 {task.symbol} ｜ 批次 {task.data_batch_id} ｜ {task.status}')
     if not snapshots.empty:
         snapshots=snapshots.sort_values('trade_date')

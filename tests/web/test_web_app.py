@@ -60,3 +60,31 @@ def test_tutorial_download_without_database(monkeypatch):
     assert len(downloads) == 1
     assert downloads[0].label == '下载完整使用教程 PDF'
     assert (ROOT/'docs/量化研究工作台_使用教程.pdf').read_bytes().startswith(b'%PDF-')
+
+
+def test_replay_chart_uses_task_interval(app, monkeypatch):
+    from decimal import Decimal
+    import quant_system.indicators as indicators
+    from quant_system.backtest_pipeline import BacktestRequest, run_batch_backtest
+    from quant_system.database import DataImportBatch
+    at, factory = app
+    with factory() as session:
+        batch_id = session.scalar(select(DataImportBatch.id))
+    result = run_batch_backtest(BacktestRequest(
+        batch_id, '000001.SZ', date(2024, 1, 5), date(2024, 1, 10),
+        '未复权', Decimal('10000'), 2, 3, 100), factory)
+    captured = []
+    original = indicators.add_indicators
+    def capture(frame, **kwargs):
+        output = original(frame, **kwargs)
+        captured.append(output.copy())
+        return output
+    monkeypatch.setattr(indicators, 'add_indicators', capture)
+    at.sidebar.radio[0].set_value('任务与逐日回放').run()
+    assert not at.exception
+    assert captured
+    frame = captured[-1]
+    assert frame.trade_date.min() == date(2024, 1, 5)
+    assert frame.trade_date.max() == date(2024, 1, 10)
+    assert frame.sma_long.iloc[:2].isna().all()
+    assert result.task_id > 0

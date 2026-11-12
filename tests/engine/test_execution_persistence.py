@@ -61,3 +61,22 @@ def test_missing_task_rejected(tmp_path):
     with pytest.raises(ValueError,match='任务不存在'):
         with factory.begin() as session:
             save_execution(session,999,execution())
+
+
+@pytest.mark.parametrize('completed', [False, True])
+def test_invalid_execution_rejected_before_writes(tmp_path, completed):
+    from dataclasses import replace
+    factory = create_session_factory(f"sqlite:///{tmp_path / 'invalid.db'}")
+    task_id = task(factory)
+    if completed:
+        with factory.begin() as session:
+            session.get(BacktestTask, task_id).status = 'completed'
+    result = execution() if completed else replace(execution(), snapshots=[])
+    message = '已经保存' if completed else '快照不能为空'
+    with pytest.raises(ValueError, match=message):
+        with factory.begin() as session:
+            save_execution(session, task_id, result)
+    with factory() as session:
+        assert all(not rows for rows in query_execution(session, task_id).values())
+        assert session.get(BacktestTask, task_id).status == ('completed' if completed else 'created')
+    factory.kw['bind'].dispose()

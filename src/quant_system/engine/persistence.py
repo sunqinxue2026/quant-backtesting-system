@@ -13,6 +13,10 @@ def save_execution(session: Session, task_id: int, result: BacktestResult) -> No
     task = session.get(BacktestTask, task_id)
     if task is None:
         raise ValueError("回测任务不存在")
+    if not result.snapshots:
+        raise ValueError("账户快照不能为空")
+    if task.status == "completed":
+        raise ValueError("任务执行结果已经保存")
     if session.scalar(select(BacktestSnapshot.id).where(BacktestSnapshot.task_id == task_id).limit(1)) is not None:
         raise ValueError("任务执行结果已经保存")
     order_ids: dict[int, int] = {}
