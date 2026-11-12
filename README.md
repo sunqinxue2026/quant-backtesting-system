@@ -4,14 +4,14 @@ Python 单股票日频研究项目，覆盖 **CSV → 清洗 → 数据库 → �
 
 定位为本机单用户研究演示系统，不连接券商，不执行真实交易。第一至第八阶段及整体项目已由项目负责人验收。
 
-> 当前完成版位于 **`phased-rewrite`** 分支。浏览源码或克隆时请选择此分支；仓库默认分支可能仍为早期版本。
+> 当前完成版位于 **`main`** 分支，仓库首页和默认克隆内容即为可展示的验收版本。
 
 ## 快速体验（不需要 MySQL 或真实行情）
 
 Python 3.10–3.12。以下命令在 Windows 项目根目录运行：
 
 ```powershell
-git clone --branch phased-rewrite https://github.com/sunqinxue2026/quant-backtesting-system.git
+git clone https://github.com/sunqinxue2026/quant-backtesting-system.git
 cd quant-backtesting-system
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -e ".[test,web]"
