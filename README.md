@@ -1,3 +1,29 @@
+## 第六阶段：绩效与图表（等待验收）
+
+第五阶段已获用户验收。第六阶段实现从已保存任务重读快照、成交及同批次行情，计算绩效、基准并输出四张PNG、日序列CSV和报告JSON，写入backtest_result。全量129项测试通过（新增21项），保留两条既有Pandas FutureWarning。
+
+先运行第五阶段run_pipeline.py，再使用实际任务ID：
+
+```text
+.venv\Scripts\python.exe -I scripts\analyze_task.py --task-id 1
+```
+
+默认读取第五阶段SQLite演示库，不读取DATABASE_URL。真实数据库需显式添加 --database configured，并在本机配置DATABASE_URL。本轮未执行第六阶段真实MySQL绩效持久化验证。
+
+--annualization-days 默认252；--risk-free-rate为年化小数，默认0；--output指定报告根目录。任务文件夹包含净值、回撤、价格均线信号和基准对比四张PNG、curves.csv和report.json。
+
+已保存绩效的任务拒绝重复保存；重跑回测产生新任务。文件和SQL不是原子事务：文件失败不写绩效，SQL提交失败可能留下文件，不应据此认为保存成功。
+
+绩效口径：首日收益以初始资金为分母，回撤峰值包含初始资金；年化收益按首末快照自然日跨度以365.25折算；波动ddof=1；无风险利率几何日化。无样本或零波动等未定义统计返回null并说明原因。未平仓市值计入资产，不计胜率。基准是同批次同日期同口径收盘价归一化、无成本且无限分割买入持有，不是可执行对照账户。
+
+9日合成演示最终资产9700、总收益-3%、最大回撤-3%、基准-20%、完整平仓1次、持仓3个交易日。短样本年化仅核验公式，不证明策略有效性。
+
+```text
+.venv\Scripts\python.exe -I -m pytest -o "pythonpath=src ." -q
+```
+
+完整11项说明见 docs/阶段6_绩效指标与图表验收.md。第六阶段等待验收，未进入第七阶段。以下早期阶段测试数量和阶段状态为历史记录。
+
 # 量化金融数据处理与策略回测系统：逐阶段重写版
 
 目标：使用Python 3.10、Pandas、NumPy、MySQL8、SQLAlchemy、Matplotlib、pytest，从空项目逐阶段建立可理解、可测试的日频研究型回测系统。
