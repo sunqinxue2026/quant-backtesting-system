@@ -7,7 +7,7 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .database import BacktestSnapshot, DataImportBatch, StockDaily
+from .database import BacktestSignal, BacktestSnapshot, DataImportBatch, StockDaily
 
 
 class MarketDataRepository:
@@ -53,3 +53,18 @@ class MarketDataRepository:
             self.session.add_all(items)
             self.session.flush()
         return len(items)
+
+    def add_signal_batch(self, signals: Iterable[BacktestSignal]) -> int:
+        items = list(signals)
+        if items:
+            self.session.add_all(items)
+            self.session.flush()
+        return len(items)
+
+    def query_signals(self, task_id: int) -> list[BacktestSignal]:
+        statement = (
+            select(BacktestSignal)
+            .where(BacktestSignal.task_id == task_id)
+            .order_by(BacktestSignal.signal_date)
+        )
+        return list(self.session.scalars(statement))
