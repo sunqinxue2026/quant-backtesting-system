@@ -10,9 +10,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
+
 from quant_system.data import DataLoadRequest
 from quant_system.data_import import import_csv
 from quant_system.database import create_session_factory
+
+
+def log_import_error(exc: Exception) -> None:
+    """只输出固定分类和整数错误码，不输出异常正文、SQL或连接信息。"""
+    logger = logging.getLogger(__name__)
+    if isinstance(exc, SQLAlchemyError):
+        original = getattr(exc, "orig", None)
+        args = getattr(original, "args", ())
+        code = args[0] if args and type(args[0]) is int else None
+        code_text = str(code) if code is not None else "unknown"
+        if isinstance(exc, IntegrityError):
+            reason = "重复键冲突" if code == 1062 else "完整性约束冲突"
+            logger.error("导入失败 type=IntegrityError db_code=%s reason=%s；导入事务未提交。", code_text, reason)
+        elif isinstance(exc, OperationalError):
+            logger.error("数据库操作失败 type=OperationalError db_code=%s；检查连接、权限或服务状态。", code_text)
+        else:
+            logger.error("数据库操作失败 type=SQLAlchemyError db_code=%s。", code_text)
+    elif isinstance(exc, (ValueError, FileNotFoundError, OSError)):
+        logger.error("导入失败 category=INPUT_ERROR；检查文件、字段、日期和文件权限。")
+    else:
+        logger.error("导入失败 category=UNEXPECTED_ERROR；需开发人员排查，未输出异常正文。")
 
 
 def main() -> None:
@@ -30,16 +53,16 @@ def main() -> None:
     args = parser.parse_args()
     request = DataLoadRequest(args.csv, args.source, args.data_as_of, args.price_type,
                               {"price": args.price_unit, "volume": args.volume_unit, "amount": args.amount_unit}, args.synthetic)
-    factory = create_session_factory()
+    factory = None
     try:
+        factory = create_session_factory()
         result = import_csv(request, factory)
-    except Exception:
-        # 不输出 SQLAlchemy 异常文本，避免打印连接信息或完整行情参数。
-        logger = logging.getLogger(__name__)
-        logger.error("导入失败，事务未提交；检查文件、字段、日期、数据库连接及唯一键冲突。")
+    except Exception as exc:
+        log_import_error(exc)
         raise SystemExit(1) from None
     finally:
-        factory.kw["bind"].dispose()
+        if factory is not None:
+            factory.kw["bind"].dispose()
     # DB 已提交；输出失败不会撤销已提交的数据，应使用 batch_id 查询，勿盲目重试。
     summary = {"batch_id": result.batch_id, "inserted_rows": result.inserted_rows,
                "status": "committed", "quality_report": result.cleaning.report.to_dict()}
