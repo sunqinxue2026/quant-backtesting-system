@@ -1,4 +1,19 @@
-# 当前交付：第七阶段（等待最终验收）
+# 当前交付：第八阶段 Web 演示界面（等待验收）
+
+第七阶段已获用户验收。新增 Streamlit 网页入口 `web_app.py`，提供系统总览、数据管理、创建回测、任务逐日回放和绩效对比。默认显示已有第七阶段 SQLite 手动演示库，也可选择独立网页库或环境变量数据库。
+
+安装网页依赖并启动（项目根目录）：
+
+```text
+.venv\Scripts\python.exe -I -m pip install -e ".[test,web]"
+.venv\Scripts\python.exe -I -X utf8 -m streamlit run web_app.py --server.headless=true --browser.gatherUsageStats=false
+```
+
+本轮全量143项测试通过（新增6项网页测试），保留2条既有FutureWarning。浏览器首页确认1个批次、2个任务、2份绩效、484条行情。新网页MySQL写入尚未现场实测。本机单用户界面不提供账号、跨会话提交锁和公网部署。完整11项说明见 `docs/阶段8_Web演示界面验收.md`。
+
+网页新增“使用教程”导航，提供快速上手、逐日回放、报告解读、创建与对比四部分说明，可下载 `docs/量化研究工作台_使用教程.pdf`。教程不依赖数据库连接。
+
+## 第七阶段历史交付（已验收）
 
 第六阶段已验收。第七阶段新增 scripts/run_final_demo.py、8项回归用例，补齐Matplotlib依赖与面试说明。全量137项通过，保留2条测试夹具Pandas FutureWarning。
 
@@ -54,7 +69,7 @@ CSV使用标准8列；来源JSON包含source、symbol、data_as_of、price_type�
 
 ## 当前状态
 
-第一至第六阶段已获用户验收。第七阶段完整验证、可重复真实演示及文档已完成，等待最终验收。全量137项测试通过；独立MySQL数据库quant_stage7_validation的任务4/5均完整回读通过。详见文首及第七阶段报告。
+第一至第七阶段已获用户验收。第八阶段Web界面已实现，当前全量143项测试通过，等待界面验收。第七阶段历史记录为137项通过，独立MySQL数据库quant_stage7_validation的任务4/5均完整回读通过。详见文首和各阶段报告。
 
 第五阶段运行方法（项目根目录，使用项目虚拟环境）：
 
