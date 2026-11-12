@@ -7,7 +7,16 @@ name = "quant-backtesting-system-rewrite"
 version = "0.1.0"
 description = "分阶段开发的量化数据处理与回测系统"
 requires-python = ">=3.10,<3.13"
-dependencies = ["pandas>=2.0,<3", "numpy>=1.24,<3"]
+dependencies = [
+    "pandas>=2.0,<3",
+    "numpy>=1.24,<3",
+    "SQLAlchemy>=2.0,<3",
+    "PyMySQL>=1.1,<2",
+    "matplotlib>=3.7,<4",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
