@@ -13,7 +13,7 @@
 .venv\Scripts\python.exe -I scripts\run_backtest_demo.py
 ```
 
-演示仅使用synthetic/test合成行情，不连接数据库，生成execution.json和snapshots.csv。持久化服务为 `quant_system.engine.persistence.save_execution`，在调用方事务中保存订单、成交、快照；新增执行持久化及CSV全链路已用SQLite验证，尚未对真实MySQL订单成交做新增实测。
+演示仅使用synthetic/test合成行情，不连接数据库，生成execution.json和snapshots.csv。持久化服务为 `quant_system.engine.persistence.save_execution`，在调用方事务中保存订单、成交、快照；新增执行持久化及CSV全链路已用SQLite验证，已于2026-11-13补充真实MySQL订单、成交及账户快照实测，详见第五阶段报告。
 
 - 需求基线：`需求书.md`。项目按用户要求以 Python 3.10 为主要兼容版本设计。
 - 第一阶段报告：`docs/阶段1_总体设计与验收.md`。
@@ -120,8 +120,12 @@ $env:DATABASE_URL="mysql+pymysql://user:password@localhost:3306/quant_db?charset
 ```
 
 以实际batch_id替换1；每次重跑创建新任务，旧任务结果不覆盖。
-使用已配置数据库必须明确增加 --database configured，并在本机设置DATABASE_URL；连接串不入库、不打印。MySQL写入需使用项目专用测试库，本轮没有执行MySQL验证。
+使用已配置数据库必须明确增加 --database configured，并在本机设置DATABASE_URL；连接串不入库、不打印。MySQL写入使用项目专用数据库；2026-11-13已在quant_db完成合成数据完整链路、带成本精度、重复保存和强制异常回滚实测，不删除已有数据。
 
 指标函数在DataFrame.attrs记录均线参数，策略在元数据存在时拒绝参数不匹配；统一入口保证由同一参数计算并运行。手工构造的旧式指标帧仍兼容，若attrs缺失则无法单靠列名证明周期，调用方须保证来源。
 
 新增14项测试：全链路手算及入库查询、分类与批次隔离、4项输入边界、执行事务回滚、成本传递、未来数据不变性、参数不匹配及4项信号契约错误。全量108项通过，保留2条既有测试数据类型FutureWarning。
+
+## 第五阶段真实MySQL补充验证（2026-11-13）
+
+localhost:3306 / quant_db：新增合成行情批次10（9行）；零成本任务1保存2信号、2订单、2成交、9快照，最终9700.00；带成本任务2最终9670.21。新会话逐字段核对订单日期、成交价、费用、关联及全部快照。重复保存被拒绝且数量不变；任务3在保存后主动抛错，配置、任务、信号、订单、成交、快照整体回滚，原行情保留。实际保留2个测试任务、4信号、4订单、4成交、18快照。未进入第六阶段。108项为此前SQLite全量测试记录，本轮未重跑。
