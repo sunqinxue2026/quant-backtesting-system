@@ -15,6 +15,7 @@ from .indicators import add_indicators
 from .strategies import DualMovingAverageStrategy
 from .engine import BacktestEngine, BacktestResult, CostModel
 from .engine.persistence import save_execution
+from .money import normalize_initial_cash
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +67,14 @@ def load_batch_frame(session: Session, request: BacktestRequest) -> pd.DataFrame
 def run_batch_backtest(request: BacktestRequest, factory: sessionmaker[Session],
                        costs: CostModel | None = None) -> PipelineResult:
     """读取已提交行情，运行回测；所有新执行记录在单一事务内保存。"""
+    initial_cash = normalize_initial_cash(request.initial_cash)
     strategy = DualMovingAverageStrategy(request.short_window, request.long_window)
     costs = costs or CostModel()
     with factory() as session:
         frame = load_batch_frame(session, request)
     indicators = add_indicators(frame, short_window=request.short_window, long_window=request.long_window)
     signals = strategy.generate_signals(indicators)
-    result = BacktestEngine(strategy, request.initial_cash, costs, request.order_quantity).run(indicators)
+    result = BacktestEngine(strategy, initial_cash, costs, request.order_quantity).run(indicators)
     params = {
         'short_window': request.short_window, 'long_window': request.long_window,
         'order_quantity': request.order_quantity, 'start': request.start.isoformat(),
@@ -85,7 +87,7 @@ def run_batch_backtest(request: BacktestRequest, factory: sessionmaker[Session],
         session.add(config)
         session.flush()
         task = BacktestTask(symbol=request.symbol, strategy_config_id=config.id,
-                            data_batch_id=request.batch_id, initial_capital=request.initial_cash)
+                            data_batch_id=request.batch_id, initial_capital=initial_cash)
         session.add(task)
         session.flush()
         MarketDataRepository(session).add_signal_batch([

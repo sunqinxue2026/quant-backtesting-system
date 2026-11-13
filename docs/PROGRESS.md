@@ -52,3 +52,45 @@
 - 本地IDE、虚拟环境及运行产物保持未跟踪，未删除本地文件；未擅自增加.gitignore。
 - README补充新克隆网页演示、入口差异、零成本口径、依赖安装和提交范围；不改业务代码、公共接口或数据库结构。
 - 本轮执行文档链接、跟踪文件规则扫描及git diff --check；不重跑业务测试，148项为上一轮实际记录。规则扫描不是完整Git历史秘密审计。
+
+
+## 2026-11-13 本轮针对性缺陷修复（工作区未提交）
+
+- 修改前已检查基线与工作区：原 main=14dee7f，干净且落后24个提交；fetch 后快进到远程审查基准501dda0。快进带来的历史文件变化属于远程已有提交，不是本轮删除或改写。
+- 修复自动仓位未舍入上界漏解：只用 estimate 判定，倍增+二分，最大数量2**31-1内取整手，新增有限终止及最大性测试。
+- 修复卖出费用导致负现金：所有拒单校验先于状态变更，允许已有现金补足费用；拒单保持现金、持仓、可卖数量、成本和成交列表不变。
+- 统一本金和最低佣金的分精度、显式ROUND_HALF_EVEN；规范化本金后再次检查正值，同一本金写任务、账户、快照并传入原绩效逻辑。
+- 新增53项独立回归，包含estimate确定性/纯函数/单调性、半分、舍入平台、费用滑点、数量上限、SQLite新会话金额和订单成交关联、flush后故障回滚。
+- 新增.gitignore；未删除本地文件或撤回已跟踪文件。历史测试及验收结果保持原样；未改双均线信号、交易时序、绩效公式和数据库表结构。
+- 缺失Streamlit首次下载超时，延长下载超时后安装成功，使用既有web extra约束，无依赖声明变更。
+
+### 本轮实际执行（不是历史验收结果）
+
+|范围|实际命令|通过|失败|错误|跳过|警告|
+|---|---|---:|---:|---:|---:|---:|
+|核心|`python -m pytest tests --ignore=tests/web -ra`|192|0|0|0|92|
+|Web|`python -m pytest tests/web -ra`|9|0|0|0|13|
+|SQLite持久化相关|`python -m pytest tests/database tests/engine/test_execution_persistence.py tests/engine/test_pipeline.py tests/engine/test_money_boundaries.py -k "sqlite or persistence or pipeline or database" -ra`|49|0|0|0|69|
+|完整|`python -m pytest -ra`|201|0|0|0|105|
+
+SQLite范围另有45项被-k取消选择（deselected，不属于跳过），包括部分非持久化回归；它们已在核心和完整范围执行。各范围重叠，不相加；完整测试包含原148项与新增53项。新增文件早期单独运行52项通过，随后增加自动仓位SQLite回读用例，最终完整运行覆盖53项。
+
+完整测试105条警告：103条datetime.utcnow弃用警告、2条既有Pandas夹具类型警告。本轮MySQL未验证，无性能测量或性能提升结论。事务失败采用局部结果不发布、数据库整体回滚的现有架构，不存在共享内存账户的补偿更新。
+
+全部修改保留工作区，不创建Git commit、不推送GitHub，等待用户代码审查。
+
+
+## 2026-11-13 手动订单数量上限定向修复（工作区未提交）
+
+- 复核当前工作区后确认：BacktestEngine 对手动 order_quantity 原先只校验非负整数，未校验 MAX_ORDER_QUANTITY；Portfolio.settle_trade 是可直接调用的公共路径，也需要在估算和任何账户状态变更前拒绝超范围数量。
+- 新增共享数量边界模块 `src/quant_system/engine/limits.py`，保持 `quant_system.engine.backtest.MAX_ORDER_QUANTITY` 的导入兼容；手动订单数量和直接结算数量均限制为 1 个至 `2**31 - 1` 个整数（引擎仍允许 None 表示自动仓位，0 保持原有手动零数量行为）。
+- 新增参数化边界测试：最大值允许、最大值加一拒绝、负数拒绝、bool 拒绝、浮点数拒绝、None 允许；新增直接 Portfolio 结算超上限且账户状态不变测试。
+- 未修改自动仓位搜索、交易信号、T+1、执行时序、绩效公式、数据库表结构或已有测试断言；未删除、未暂存、未创建提交、未推送。
+
+### 本轮实际验证（不是历史记录）
+
+- 目标回归：`python -m pytest tests/engine/test_money_boundaries.py -q`，实际 65 passed，0 failed，0 errors，0 skipped，24 warnings。
+- 语法检查：`python -m py_compile src\\quant_system\\engine\\backtest.py src\\quant_system\\engine\\portfolio.py src\\quant_system\\engine\\limits.py tests\\engine\\test_money_boundaries.py`，退出码 0。
+- 完整测试：`python -m pytest -ra`，实际 244 passed，0 failed，0 errors，0 skipped，105 warnings，耗时 16.51 秒，退出码 0。
+- 本轮新增测试相对上一轮复核增加 7 项，完整测试由历史复核记录的 237 passed 变为本轮实际 244 passed；上一轮金额与自动仓位修复的 201 passed 记录仍保留，未覆盖或改写历史结果。
+- 本轮警告仍为既有 SQLAlchemy `datetime.utcnow()` 弃用警告 103 条，以及既有 Pandas 夹具类型警告 2 条；未修改无关模块消除警告。MySQL 未验证。

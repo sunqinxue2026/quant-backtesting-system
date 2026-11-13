@@ -44,3 +44,59 @@ web_app.py以Streamlit提供单用户演示界面，复用清洗、回测与报�
 5. 网页上传预览持续落盘，建议临时生命周期及配额。当前仅限可信本机单用户。
 
 这些来自静态代码审查，未运行逐项故障复现，不能写成均已修复。
+
+
+## 2026-11-13 本轮金额与自动仓位修复（未提交）
+
+基线：本地工作区原先干净，main 从 14dee7f 快进至已审查的远程 501dda0 后实施。未创建提交、未推送；本节为本轮追加，以上历史记录保持原样。
+
+### 金额业务边界
+
+- 新增 money.py：Decimal(str(value))，按 0.01、显式 ROUND_HALF_EVEN 规范化。
+- 回测编排入口先规范化本金并验证结果大于零；此后同一金额用于引擎和 BacktestTask。Portfolio 直接调用入口保留同一校验；已规范化值再次校验是幂等的，不在累计过程中重复舍入。
+- 初始首日账户快照由相同本金产生，绩效仍使用任务记录本金，未修改绩效公式。1.005 -> 1.00、1.015 -> 1.02、0.001 拒绝；SQLite 新会话回读及绩效分母传参均已实际测试。
+- CostModel 配置入口将最低佣金规范化到分；先拒绝原始负数，避免负微量舍入为零后被接受。佣金率、印花税率、滑点基点保留原精度。
+- 保留现有成交额先舍入到分、佣金及税按分计算的业务边界；结算现金由已按分计算的分项相加减，不将价格或比例参数量化到分。
+
+### 自动仓位搜索依据与终止
+
+- 唯一可负担判定为 cash + Portfolio.estimate(BUY, quantity, open_price).total_cash_change >= 0；不使用未舍入价格另行判定。
+- 固定有效价格、固定 CostModel、固定 Decimal 上下文时 estimate 无随机性、无状态写入。买入执行价格为正且与数量无关；数量增加使舍入成交额非递减；非负费率和固定非负最低佣金使费用非递减。因此买入可负担性单调，允许分舍入形成平台。
+- 新增重复估算、账户状态不变、舍入平台、最低佣金切换及多组比例参数的单调回归测试。结算与搜索使用同一个 estimate 实现和同步调用环境；不支持将自定义非单调 estimate 替换后仍声称搜索正确。
+- 从一手开始倍增，最多至 floor((2**31-1)/lot_size) 手；该数量上限匹配当前数据库有符号 Integer 的可移植范围。倍增严格增加、二分区间严格缩小；返回受支持范围内最大可负担整手数量。若到上限仍可负担，则返回上限，不表示无限数量域的最大值。lot_size 大于上限时没有受支持的整手，返回零股拒单。
+
+### 卖出拒单与事务边界
+
+- settle_trade 在任何账户状态变更前完成估算、数量检查、预计现金计算；负现金则拒绝。检查不通过时不创建空持仓，不改变现金、持仓、可卖数量、成本及成交列表。
+- 卖出所得不能覆盖费用但已有现金可补足时允许；恰好补足允许，少一分钱拒绝。
+- 现有架构先在局部 Portfolio 完成整个回测，生成一次性结果，再在 factory.begin() 单事务中保存配置、任务、信号、订单、成交和快照，事务退出成功后才返回 PipelineResult。不存在跨请求共享的账户，因此没有增加共享内存提交或补偿机制。
+- 持久化失败时事务整体回滚并抛错，局部结果不返回给业务调用方；save_execution 不修改传入结果。新增故障注入测试验证 flush 后失败、所有新执行记录回滚、原行情保留及内存结果内容不变。直接使用 save_execution 的调用方仍负责事务，原公共接口不变。
+
+### 实际验证及限制
+
+- 全量 python -m pytest -ra：201 passed，0 failed，0 errors，0 skipped，105 warnings。新增独立回归 53 项；原有 148 项测试未删除、未降低断言。
+- 105 条警告中 103 条为既有 datetime.utcnow 弃用路径（新增场景增加触发次数），2 条为既有 Pandas 测试夹具 dtype 警告；未为消除警告修改无关模块。
+- 本轮只验证 SQLite；MySQL 未执行，不能由 SQLite 通过推断 MySQL 已验证。未做性能测量，未声称性能提升。
+- Streamlit 已按 pyproject.toml 现有 web extra 声明安装至执行环境，无需修改依赖声明或数据库结构。
+
+
+## 2026-11-13 手动订单数量上限定向修复（工作区未提交）
+
+### 问题与约束
+
+BacktestEngine 的手动 `order_quantity` 原先只验证非负整数，可能把超过数据库有符号 `Integer` 范围的数量传入持久化。`Portfolio.settle_trade()` 可被绕过 BacktestEngine 直接调用，因此仅修复引擎入口不足以覆盖公共调用路径。本轮不修改数据库表结构、自动仓位算法、交易时序、策略信号、T+1 规则或绩效公式。
+
+### 决策
+
+- 将 `MAX_ORDER_QUANTITY = 2**31 - 1` 放入 `engine/limits.py`，BacktestEngine 继续导出同名模块级名称以保持已有导入兼容。
+- BacktestEngine 手动数量必须是非 bool 的整数，范围为 `0..MAX_ORDER_QUANTITY`；`None` 仍表示自动仓位。
+- Portfolio.settle_trade 直接拒绝非 bool 整数范围外的数量，范围为 `1..MAX_ORDER_QUANTITY`。该校验发生在 `estimate()` 和全部账户状态修改之前，因此超范围拒单不会创建持仓、成交或改变现金。
+- 上限依据是数据库中 `BacktestOrder.quantity`、`BacktestTrade.quantity` 和 `BacktestSnapshot.position_quantity` 均为 SQLAlchemy `Integer`，并编译为各目标方言的 `INTEGER`；本轮不改变表结构。
+
+### 实际验证与限制
+
+- 新增参数化测试覆盖最大值、最大值加一、负数、bool、浮点数和 None；新增直接 Portfolio 超范围结算的状态不变测试。
+- 目标测试实际通过：65 passed，0 failed，0 errors，0 skipped，24 warnings。语法编译实际退出码为 0。
+- 完整 `python -m pytest -ra` 已实际执行：244 passed，0 failed，0 errors，0 skipped，105 warnings，耗时 16.51 秒，退出码 0。相对上一轮复核的 237 passed，本轮新增 7 项测试全部通过。
+- 警告实际为 SQLAlchemy `datetime.utcnow()` 弃用警告 103 条，以及既有 Pandas 夹具类型警告 2 条；MySQL 本轮未执行，不能由本结果推断 MySQL 已验证。
+- 本轮仅保留工作区改动，未创建 Git commit，未推送 GitHub。

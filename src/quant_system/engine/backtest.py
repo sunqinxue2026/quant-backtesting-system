@@ -12,9 +12,11 @@ import pandas as pd
 from ..strategies.dual_ma import DualMovingAverageStrategy
 from .models import Order, OrderStatus, Side, Trade
 from .portfolio import CostModel, Portfolio
+from .limits import MAX_ORDER_QUANTITY
 
 
 logger = logging.getLogger(__name__)
+
 
 
 class Strategy(Protocol):
@@ -51,11 +53,11 @@ class BacktestEngine:
         cost_model: CostModel | None = None,
         order_quantity: int | None = None,
     ) -> None:
-        if order_quantity is not None and (isinstance(order_quantity, bool) or not isinstance(order_quantity, int) or order_quantity < 0):
+        if order_quantity is not None and (isinstance(order_quantity, bool) or not isinstance(order_quantity, int) or order_quantity < 0 or order_quantity > MAX_ORDER_QUANTITY):
             raise ValueError("订单数量必须为非负整数或None")
-        self.initial_cash = Decimal(str(initial_cash))
         self.strategy = strategy
         self.portfolio = Portfolio(initial_cash, cost_model)
+        self.initial_cash = self.portfolio.initial_cash
         self.order_quantity = order_quantity
         self._order_id = 0
         self._trade_id = 0
@@ -154,12 +156,24 @@ class BacktestEngine:
             if not open_price.is_finite() or open_price <= 0:
                 return Order(order.order_id, order.symbol, order.signal_date, order.execute_date, order.side, 0, OrderStatus.REJECTED, "无效开盘价"), None
             lot = self.portfolio.cost_model.lot_size
-            rate = self.portfolio.cost_model.slippage_bps / Decimal("10000")
-            high = int(self.portfolio.cash / (open_price * (1 + rate))) // lot
-            low = 0
+            max_lots = MAX_ORDER_QUANTITY // lot
+
+            def affordable(lots: int) -> bool:
+                return self.portfolio.cash + self.portfolio.estimate(
+                    Side.BUY, lots * lot, open_price).total_cash_change >= 0
+
+            # 正价格、非负成本使最终支出非递减（分舍入允许平台）。
+            # 倍增只使用 estimate 判定；到达整数存储上限必然终止。
+            low, high = 0, min(1, max_lots)
+            while high and affordable(high):
+                low = high
+                if high == max_lots:
+                    break
+                high = min(high * 2, max_lots)
+            # low 可负担；high 不可负担或等于已可负担的上限。
             while low < high:
                 mid = (low + high + 1) // 2
-                if self.portfolio.cash + self.portfolio.estimate(Side.BUY, mid * lot, open_price).total_cash_change >= 0:
+                if affordable(mid):
                     low = mid
                 else:
                     high = mid - 1

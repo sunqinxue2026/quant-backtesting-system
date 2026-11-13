@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, ROUND_HALF_EVEN
 
 from .models import Side, Trade
-
-
-MONEY_QUANT = Decimal("0.01")
+from .limits import MAX_ORDER_QUANTITY
+from ..money import MONEY_QUANT, normalize_money, normalize_initial_cash
 
 
 @dataclass
@@ -32,7 +31,10 @@ class CostModel:
             value = Decimal(str(getattr(self, name)))
             if not value.is_finite():
                 raise ValueError("成本参数必须是有限数值")
+            if value < 0:
+                raise ValueError("交易成本参数不能为负数")
             object.__setattr__(self, name, value)
+        object.__setattr__(self, "minimum_commission", normalize_money(self.minimum_commission))
         if isinstance(self.lot_size, bool) or not isinstance(self.lot_size, int):
             raise ValueError("交易单位必须为正整数")
         if self.slippage_bps >= 10000:
@@ -56,10 +58,7 @@ class Portfolio:
     """单股票、现货、只做多账户；买入当日不可卖出。"""
 
     def __init__(self, initial_cash: Decimal, cost_model: CostModel | None = None) -> None:
-        initial_cash = Decimal(str(initial_cash))
-        if not initial_cash.is_finite() or initial_cash <= 0:
-            raise ValueError("初始资金必须大于零")
-        self.initial_cash = initial_cash.quantize(MONEY_QUANT)
+        self.initial_cash = normalize_initial_cash(initial_cash)
         self.cash = self.initial_cash
         self.cost_model = cost_model or CostModel()
         self.positions: dict[str, Position] = {}
@@ -92,30 +91,44 @@ class Portfolio:
     def settle_trade(self, symbol: str, side: Side, quantity: int, price: Decimal, trade_date: date, order_id: int, trade_id: int) -> Trade:
         if not isinstance(side, Side):
             raise ValueError("成交方向必须是Side")
+        if (isinstance(quantity, bool) or not isinstance(quantity, int)
+                or quantity <= 0 or quantity > MAX_ORDER_QUANTITY):
+            raise ValueError("成交数量必须为1至MAX_ORDER_QUANTITY之间的整数")
         estimate = self.estimate(side, quantity, price)
         if side is Side.BUY and quantity % self.cost_model.lot_size:
             raise ValueError("买入数量不满足整手交易单位")
-        if side is Side.BUY and self.position(symbol).quantity:
+        position = self.positions.get(symbol)
+        if side is Side.BUY and position is not None and position.quantity:
             raise ValueError("第一版不允许加仓")
-        if side is Side.BUY and self.cash + estimate.total_cash_change < 0:
-            raise ValueError("资金不足")
-        if side is Side.SELL and not self.can_sell(symbol, quantity):
+        if side is Side.SELL and (position is None or position.sellable_quantity < quantity):
             raise ValueError("可卖数量不足或违反T+1")
-        position = self.position(symbol)
-        trade = Trade(trade_id, order_id, symbol, trade_date, side, quantity, estimate.execution_price, estimate.commission, estimate.tax, estimate.slippage)
-        self.cash = (self.cash + estimate.total_cash_change).quantize(MONEY_QUANT, rounding=ROUND_HALF_EVEN)
+        next_cash = normalize_money(self.cash + estimate.total_cash_change)
+        if next_cash < 0:
+            raise ValueError("资金不足，成交后现金不能为负数")
+        # 所有可能失败的计算、对象构造和容器分配均在提交前完成。
+        next_position = replace(position) if position is not None else Position(symbol=symbol)
         turnover = (estimate.execution_price * quantity).quantize(MONEY_QUANT, rounding=ROUND_HALF_EVEN)
         if side is Side.BUY:
-            total_cost = position.average_cost * position.quantity + turnover + estimate.commission + estimate.tax
-            position.quantity += quantity
-            position.average_cost = (total_cost / position.quantity).quantize(Decimal("0.000001"))
-            position.last_buy_date = trade_date
+            total_cost = next_position.average_cost * next_position.quantity + turnover + estimate.commission + estimate.tax
+            next_position.quantity += quantity
+            next_position.average_cost = (total_cost / next_position.quantity).quantize(Decimal("0.000001"), rounding=ROUND_HALF_EVEN)
+            next_position.last_buy_date = trade_date
         else:
-            position.quantity -= quantity
-            position.sellable_quantity -= quantity
-            if position.quantity == 0:
-                position.average_cost = Decimal("0")
-        self.trades.append(trade)
+            next_position.quantity -= quantity
+            next_position.sellable_quantity -= quantity
+            if next_position.quantity == 0:
+                next_position.average_cost = Decimal("0")
+        trade = Trade(trade_id, order_id, symbol, trade_date, side, quantity, estimate.execution_price, estimate.commission, estimate.tax, estimate.slippage)
+        next_trades = [*self.trades, trade]
+        next_positions = dict(self.positions)
+        next_positions[symbol] = position if position is not None else next_position
+        # 提交阶段不再执行 Decimal 运算、校验或外部调用。
+        # 保留既有 Position 对象的引用；普通属性赋值不产生业务拒单。
+        if position is not None:
+            position.__dict__ = next_position.__dict__
+        self.cash = next_cash
+        self.positions = next_positions
+        self.trades = next_trades
         return trade
 
     def make_bought_sellable(self, trade_date: date) -> None:
